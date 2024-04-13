@@ -1,0 +1,8 @@
+[workspace]
+resolver = "2"
+members = ["ast", "utils"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+repository = "https://github.com/matt-cornell/frolic-lang"

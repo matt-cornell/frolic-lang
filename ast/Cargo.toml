@@ -1,0 +1,11 @@
+[package]
+name = "frolic-ast"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+frolic-utils = { version = "0.1.0", path = "../utils" }
+smallvec = "1.13.2"
