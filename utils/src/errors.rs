@@ -1,5 +1,49 @@
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
+use miette::{Diagnostic, SourceCode};
+use std::fmt::{self, Debug, Display, Formatter};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourcedError<F, E> {
+    pub file: F,
+    pub error: E,
+}
+impl<F, E: Display> Display for SourcedError<F, E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.error, f)
+    }
+}
+impl<F: Debug, E: std::error::Error> std::error::Error for SourcedError<F, E> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.error.source()
+    }
+}
+impl<F: Debug + SourceCode, E: Diagnostic> Diagnostic for SourcedError<F, E> {
+    fn source_code(&self) -> Option<&dyn SourceCode> {
+        Some(&self.file)
+    }
+    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.url()
+    }
+    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.code()
+    }
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        self.error.help()
+    }
+    fn severity(&self) -> Option<miette::Severity> {
+        self.error.severity()
+    }
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.error.labels()
+    }
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.error.related()
+    }
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.error.diagnostic_source()
+    }
+}
 
 /// Report an error, somehow.
 pub trait ErrorReporter<E> {

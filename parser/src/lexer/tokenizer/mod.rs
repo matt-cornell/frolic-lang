@@ -9,7 +9,7 @@ struct Lexer<'src, 'e, F> {
     file: F,
     offset: usize,
     tokens: Vec<Token<'src, SourceSpan>>,
-    errs: &'e mut dyn ErrorReporter<TokenizeError<F>>,
+    errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError>>,
 }
 
 impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
@@ -18,7 +18,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
         input: &'src [u8],
         offset: usize,
         file: F,
-        errs: &'e mut dyn ErrorReporter<TokenizeError<F>>,
+        errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError>>,
     ) -> Self {
         Self {
             input,
@@ -107,7 +107,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
         }
 
         Some(res.map_err(|(byte, off)| {
-            self.report(TokenizeErrorKind::InvalidUTF8 {
+            self.report(TokenizeError::InvalidUTF8 {
                     span: (self.offset + off, 1).into(),
                     byte,
             })
@@ -115,8 +115,11 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
     }
 
     #[inline]
-    fn report(&mut self, err: TokenizeErrorKind) -> bool {
-        self.errs.report(err.with_src(self.file))
+    fn report(&mut self, err: TokenizeError) -> bool {
+        self.errs.report(SourcedError {
+            error: err,
+            file: self.file
+        })
     }
 
     fn tokenize(&mut self) {
@@ -145,7 +148,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 ch if unicode_ident::is_xid_start(ch) => self.parse_ident(),
                 ch => {
                     if self.report(
-                        TokenizeErrorKind::UnexpectedChar {
+                        TokenizeError::UnexpectedChar {
                             span: (self.offset + self.index, 1).into(),
                             found: ch,
                         }
@@ -165,7 +168,7 @@ fn tokenize_impl<'src, F: Copy + Send + Sync, E: Sync>(
     errs: E,
 ) -> Vec<Token<'src, SourceSpan>>
 where
-    for<'a> &'a E: ErrorReporter<TokenizeError<F>>,
+    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError>>,
 {
     const STARTS: &[u8] = b"\n\t !$%&(),.:;@~";
     dispatch_chunks(
@@ -187,19 +190,20 @@ where
 }
 
 #[cfg(feature = "rayon")]
+#[inline(never)]
 pub fn tokenize<'src, S: AsRef<[u8]>, F: Copy + Send + Sync, E: Sync>(
     input: &'src S,
     file: F,
     errs: E,
 ) -> Vec<Token<'src, SourceSpan>>
 where
-    for<'a> &'a E: ErrorReporter<TokenizeError<F>>,
+    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError>>,
 {
     tokenize_impl::<F, E>(input.as_ref(), file, errs)
 }
 
 #[cfg(not(feature = "rayon"))]
-pub fn tokenize<'src, S: AsRef<[u8]>, F, E: ErrorReporter<TokenizeError<F>>>(
+pub fn tokenize<'src, S: AsRef<[u8]>, F, E: ErrorReporter<SourcedError<F, TokenizeError>>>(
     input: &'src S,
     file: F,
     errs: E,

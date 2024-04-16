@@ -1,5 +1,5 @@
 use super::*;
-use miette::{Diagnostic, SourceCode};
+use miette::Diagnostic;
 use std::fmt::{self, Debug, Display, Formatter};
 use strum::*;
 use thiserror::Error;
@@ -25,7 +25,7 @@ pub enum LitKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
-pub enum TokenizeErrorKind {
+pub enum TokenizeError {
     #[error("unexpected char: {found:?}")]
     UnexpectedChar {
         #[label]
@@ -79,52 +79,4 @@ pub enum TokenizeErrorKind {
         span: SourceSpan,
         found: char,
     },
-}
-
-impl TokenizeErrorKind {
-    pub fn with_src<F>(self, file: F) -> TokenizeError<F> {
-        TokenizeError { file, error: self }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TokenizeError<F> {
-    pub file: F,
-    pub error: TokenizeErrorKind,
-}
-impl<F> Display for TokenizeError<F> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.error, f)
-    }
-}
-impl<F: Debug> std::error::Error for TokenizeError<F> {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.error.source()
-    }
-}
-impl<F: Debug + SourceCode> Diagnostic for TokenizeError<F> {
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        Some(&self.file)
-    }
-    fn url<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.url()
-    }
-    fn code<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.code()
-    }
-    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        self.error.help()
-    }
-    fn severity(&self) -> Option<miette::Severity> {
-        self.error.severity()
-    }
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.error.labels()
-    }
-    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
-        self.error.related()
-    }
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.error.diagnostic_source()
-    }
 }

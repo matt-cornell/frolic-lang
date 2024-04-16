@@ -19,7 +19,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     let x = c - b'0';
                     if x >= kind as u8 {
                         let _ = self.report(
-                            TokenizeErrorKind::InvalidCharInLit {
+                            TokenizeError::InvalidCharInLit {
                                 span: (self.offset + self.index, 1).into(),
                                 found: c as _,
                                 kind,
@@ -123,7 +123,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         }
         let Some(Ok(ch)) = self.next_char(false) else {
             let _ = self.report(
-                TokenizeErrorKind::UnclosedCharLit {
+                TokenizeError::UnclosedCharLit {
                     span: (start + self.offset, 1).into(),
                     end: self.index + self.offset,
                 }
@@ -171,7 +171,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                     if last != '}' {
                                         let l = last.len_utf8();
                                         if self.report(
-                                            TokenizeErrorKind::ExpectedUnicodeBrace {
+                                            TokenizeError::ExpectedUnicodeBrace {
                                                 close: true,
                                                 span: (self.index - l + self.offset, l).into(),
                                                 found: last,
@@ -187,7 +187,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 Some(Ok(c)) => {
                                     let l = c.len_utf8();
                                     if self.report(
-                                        TokenizeErrorKind::ExpectedUnicodeBrace {
+                                        TokenizeError::ExpectedUnicodeBrace {
                                             close: false,
                                             span: (self.index - l + self.offset, l).into(),
                                             found: c,
@@ -200,7 +200,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 }
                                 None => {
                                     let _ = self.report(
-                                        TokenizeErrorKind::UnclosedCharLit {
+                                        TokenizeError::UnclosedCharLit {
                                             span: (start + self.offset, 1).into(),
                                             end: self.index + self.offset,
                                         }
@@ -211,7 +211,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         }
                         _ => {
                             if self.report(
-                                TokenizeErrorKind::UnknownEscapeCode {
+                                TokenizeError::UnknownEscapeCode {
                                     span: (self.index + self.offset, 1).into(),
                                     code: b,
                                 }
@@ -224,7 +224,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     }
                 } else {
                     let _ = self.report(
-                        TokenizeErrorKind::UnclosedCharLit {
+                        TokenizeError::UnclosedCharLit {
                             span: (start + self.offset, 1).into(),
                             end: self.index + self.offset,
                         }
@@ -239,7 +239,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
             Some(Ok('\'') | Err(false)) => {}
             Some(Ok(_)) | None => {
                 let _ = self.report(
-                    TokenizeErrorKind::UnclosedCharLit {
+                    TokenizeError::UnclosedCharLit {
                         span: (start + self.offset, 1).into(),
                         end: self.index + self.offset,
                     }

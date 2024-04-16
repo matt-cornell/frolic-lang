@@ -85,7 +85,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         };
                         if !valid
                             && self.report(
-                                TokenizeErrorKind::UnclosedMultiline {
+                                TokenizeError::UnclosedMultiline {
                                     span: (start + self.offset, len + 1).into(),
                                     end: self.input.len() + self.offset,
                                 }
