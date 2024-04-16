@@ -8,7 +8,10 @@ impl<E, T: ErrorReporter<E>> ErrorReporter<E> for &mut T {
         T::report(self, err)
     }
 }
-impl<'a, E, T> ErrorReporter<E> for &&'a T where &'a T: ErrorReporter<E> {
+impl<'a, E, T> ErrorReporter<E> for &&'a T
+where
+    &'a T: ErrorReporter<E>,
+{
     fn report(&mut self, err: E) {
         let mut this: &'a T = self;
         this.report(err)

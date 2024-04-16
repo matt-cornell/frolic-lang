@@ -1,6 +1,7 @@
 use super::*;
 
 mod literals;
+mod misc;
 
 fn next_char(input: &[u8], index: &mut usize, peek: bool) -> Option<Result<char, (u8, usize)>> {
     let b = *input.get(*index)?;
@@ -96,6 +97,12 @@ fn tokenize_bytes<'src, F: Copy>(
             Ok('0'..='9') => {
                 literals::parse_num(input, &mut index, offset, &mut tokens, file, errs)
             }
+            Ok('#') => misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs),
+            Ok(ch) if ch.is_whitespace() => {
+                misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs)
+            }
+            Ok('_') => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
+            Ok(ch) if unicode_ident::is_xid_start(ch) => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
             Ok(ch) => errs.report(
                 TokenizeErrorKind::UnexpectedChar {
                     span: (offset + index, 1).into(),
@@ -120,7 +127,10 @@ fn tokenize_impl<'src, F: Copy + Send + Sync, E: Sync>(
     input: &'src [u8],
     file: F,
     errs: E,
-) -> Vec<Token<'src, SourceSpan>> where for<'a> &'a E: ErrorReporter<TokenizeError<F>> {
+) -> Vec<Token<'src, SourceSpan>>
+where
+    for<'a> &'a E: ErrorReporter<TokenizeError<F>>,
+{
     const STARTS: &[u8] = b"\n\t !$%&(),.:;@~";
     dispatch_chunks(
         input,
@@ -140,7 +150,9 @@ pub fn tokenize<'src, S: AsRef<[u8]>, F: Copy + Send + Sync, E: Sync>(
     input: &'src S,
     file: F,
     errs: E,
-) -> Vec<Token<'src, SourceSpan>> where for<'a> &'a E: ErrorReporter<TokenizeError<F>>
+) -> Vec<Token<'src, SourceSpan>>
+where
+    for<'a> &'a E: ErrorReporter<TokenizeError<F>>,
 {
     tokenize_impl::<F, E>(input.as_ref(), file, errs)
 }

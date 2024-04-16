@@ -21,11 +21,6 @@ pub enum TokenizeErrorKind {
         span: SourceSpan,
         found: char,
     },
-    #[error("unexpected EOF")]
-    UnexpectedEof {
-        #[label]
-        span: SourceSpan,
-    },
     #[error("invalid character {found:?} in {kind} literal")]
     InvalidCharInLit {
         #[label]
@@ -38,6 +33,13 @@ pub enum TokenizeErrorKind {
         #[label]
         span: SourceSpan,
         byte: u8,
+    },
+    #[error("unclosed multiline comment")]
+    UnclosedMultiline {
+        #[label("opened here")]
+        span: SourceSpan,
+        #[label]
+        end: usize,
     },
 }
 

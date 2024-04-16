@@ -1,7 +1,7 @@
+use super::*;
 use crate::lexer::error::LitKind;
 
-use super::*;
-
+#[allow(clippy::too_many_arguments)] // I'll do what I want
 fn parse_num_impl<'src, F>(
     start: usize,
     kind: LitKind,

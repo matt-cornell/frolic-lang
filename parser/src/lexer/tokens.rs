@@ -17,7 +17,15 @@ pub enum Keyword {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CommentKind {
+    Ignore,
+    OuterDoc,
+    InnerDoc,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenKind<'src> {
+    Comment(Cow<'src, [u8]>, CommentKind),
     Ident(&'src str),
     Keyword(Keyword),
     Open(Delim),
@@ -38,7 +46,7 @@ impl<'src> TokenKind<'src> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Token<'src, S> {
     pub kind: TokenKind<'src>,
     pub span: S,
