@@ -1,6 +1,3 @@
-pub type DefaultSpan<F> = (Option<F>, miette::SourceSpan);
-
-
 /// Report an error, somehow.
 pub trait ErrorReporter<E> {
     fn report(&mut self, err: E);
@@ -9,6 +6,12 @@ pub trait ErrorReporter<E> {
 impl<E, T: ErrorReporter<E>> ErrorReporter<E> for &mut T {
     fn report(&mut self, err: E) {
         T::report(self, err)
+    }
+}
+impl<'a, E, T> ErrorReporter<E> for &&'a T where &'a T: ErrorReporter<E> {
+    fn report(&mut self, err: E) {
+        let mut this: &'a T = self;
+        this.report(err)
     }
 }
 

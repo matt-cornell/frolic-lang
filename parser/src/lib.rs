@@ -1,4 +1,5 @@
 use frolic_utils::prelude::*;
+use miette::SourceSpan;
 use par::dispatch_chunks;
 
 pub mod lexer;

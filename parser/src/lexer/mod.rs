@@ -1,5 +1,5 @@
 use super::*;
-use error::TokenizeError;
+use error::*;
 use tokens::*;
 
 pub mod error;

@@ -1,7 +1,7 @@
 use super::*;
 use strum::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display)]
+#[derive(Debug, Clone, Copy, PartialEq, Display)]
 #[strum(serialize_all = "UPPERCASE")]
 pub enum Delim {
     Paren,
@@ -9,19 +9,21 @@ pub enum Delim {
     Bracket,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Display, EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, EnumString)]
 pub enum Keyword {
     Def,
     Let,
     If,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind<'src> {
     Ident(&'src str),
     Keyword(Keyword),
     Open(Delim),
     Close(Delim),
+    Int(i128),
+    Float(f64),
 }
 
 impl<'src> TokenKind<'src> {
@@ -36,10 +38,18 @@ impl<'src> TokenKind<'src> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Token<'src, S> {
     pub kind: TokenKind<'src>,
     pub span: S,
+}
+impl<'src, S> Token<'src, S> {
+    pub fn map_span<T, F: FnOnce(S) -> T>(self, op: F) -> Token<'src, T> {
+        Token {
+            kind: self.kind,
+            span: op(self.span),
+        }
+    }
 }
 impl<S: Span> Located for Token<'_, S> {
     type Span = S;
