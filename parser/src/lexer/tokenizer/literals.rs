@@ -28,7 +28,7 @@ fn parse_num_impl<'src, F>(
             b'0'..=b'9' => {
                 let x = c - b'0';
                 if x >= kind as u8 {
-                    errs.report(
+                    let _ = errs.report(
                         TokenizeErrorKind::InvalidCharInLit {
                             span: (offset + *index, 1).into(),
                             found: c as _,

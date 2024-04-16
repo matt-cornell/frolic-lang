@@ -102,21 +102,31 @@ fn tokenize_bytes<'src, F: Copy>(
                 misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs)
             }
             Ok('_') => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
-            Ok(ch) if unicode_ident::is_xid_start(ch) => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
-            Ok(ch) => errs.report(
-                TokenizeErrorKind::UnexpectedChar {
-                    span: (offset + index, 1).into(),
-                    found: ch,
+            Ok(ch) if unicode_ident::is_xid_start(ch) => {
+                misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs)
+            }
+            Ok(ch) => {
+                if errs.report(
+                    TokenizeErrorKind::UnexpectedChar {
+                        span: (offset + index, 1).into(),
+                        found: ch,
+                    }
+                    .with_src(file),
+                ) {
+                    return tokens;
                 }
-                .with_src(file),
-            ),
-            Err((b, idx)) => errs.report(
-                TokenizeErrorKind::InvalidUTF8 {
-                    span: (offset + idx, 1).into(),
-                    byte: b,
+            }
+            Err((b, idx)) => {
+                if errs.report(
+                    TokenizeErrorKind::InvalidUTF8 {
+                        span: (offset + idx, 1).into(),
+                        byte: b,
+                    }
+                    .with_src(file),
+                ) {
+                    return tokens;
                 }
-                .with_src(file),
-            ),
+            }
         }
     }
     tokens
