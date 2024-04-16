@@ -53,7 +53,7 @@ pub fn parse_comment<'src, F: Copy>(
 ) {
     let mut comment = Cow::Borrowed(&[][..]);
     let mut data = None;
-    while let Some(ch) = next_char(input, index, true) {
+    while let Some(ch) = next_char(input, index, true, file, offset, errs) {
         match ch {
             Ok('#') => match input.get(*index + 1) {
                 Some(&b'#') => {
@@ -160,16 +160,8 @@ pub fn parse_comment<'src, F: Copy>(
                     break;
                 }
             }
-            Err((b, idx)) => {
-                if errs.report(
-                    TokenizeErrorKind::InvalidUTF8 {
-                        span: (offset + idx, 1).into(),
-                        byte: b,
-                    }
-                    .with_src(file),
-                ) {
-                    return;
-                }
+            Err(ret) => if ret {
+                return
             }
         }
     }
@@ -193,24 +185,13 @@ pub fn parse_ident<'src, F: Copy>(
 ) {
     use unicode_ident::*;
     let start = *index;
-    let ch = match next_char(input, index, false) {
-        None => return,
-        Some(Ok(ch)) => ch,
-        Some(Err((b, idx))) => {
-            let _ = errs.report(
-                TokenizeErrorKind::InvalidUTF8 {
-                    span: (offset + idx, 1).into(),
-                    byte: b,
-                }
-                .with_src(file),
-            );
-            return;
-        }
+    let Some(Ok(ch)) = next_char(input, index, false, file, offset, errs) else {
+        return;
     };
     if !(ch == '_' || is_xid_start(ch)) {
         return;
     }
-    std::iter::from_fn(|| next_char(input, index, false))
+    std::iter::from_fn(|| next_char(input, index, false, file, offset, errs))
         .map_while(|ch| ch.ok())
         .take_while(|&ch| is_xid_continue(ch))
         .count();

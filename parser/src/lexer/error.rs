@@ -4,6 +4,17 @@ use std::fmt::{self, Debug, Display, Formatter};
 use strum::*;
 use thiserror::Error;
 
+struct PrettyByte(u8);
+impl Display for PrettyByte {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if (20..=127).contains(&self.0) {
+            write!(f, "{}", self.0 as char)
+        } else {
+            write!(f, "<{:0>2x}>", self.0)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromRepr, Display)]
 #[strum(serialize_all = "lowercase")]
 pub enum LitKind {
@@ -40,6 +51,33 @@ pub enum TokenizeErrorKind {
         span: SourceSpan,
         #[label]
         end: usize,
+    },
+    #[error("unclosed character literal")]
+    UnclosedCharLit {
+        #[label("started here")]
+        span: SourceSpan,
+        #[label]
+        end: usize,
+    },
+    #[error("unclosed string literal")]
+    UnclosedStrLit {
+        #[label("started here")]
+        span: SourceSpan,
+        #[label]
+        end: usize,
+    },
+    #[error("unknown escape code '\\{}'", PrettyByte(*.code))]
+    UnknownEscapeCode {
+        #[label]
+        span: SourceSpan,
+        code: u8,
+    },
+    #[error("expected {} brace in unicode escape code", if *.close {"closing"} else {"opening"})]
+    ExpectedUnicodeBrace {
+        close: bool,
+        #[label("found {found:?}")]
+        span: SourceSpan,
+        found: char,
     },
 }
 

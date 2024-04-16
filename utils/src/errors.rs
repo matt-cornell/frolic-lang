@@ -138,7 +138,10 @@ impl<E, T: ErrorReporter<E>> ErrorReporter<E> for FusedReporter<T> {
         true
     }
 }
-impl<'a, E, T> ErrorReporter<E> for &'a FusedReporter<T> where &'a T: ErrorReporter<E> {
+impl<'a, E, T> ErrorReporter<E> for &'a FusedReporter<T>
+where
+    &'a T: ErrorReporter<E>,
+{
     fn report(&mut self, err: E) -> bool {
         let mut this: &'a T = &self.0;
         let _ = this.report(err);

@@ -32,6 +32,8 @@ pub enum TokenKind<'src> {
     Close(Delim),
     Int(i128),
     Float(f64),
+    Char(u32),
+    String(Cow<'src, [u8]>),
 }
 
 impl<'src> TokenKind<'src> {

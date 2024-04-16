@@ -3,7 +3,14 @@ use super::*;
 mod literals;
 mod misc;
 
-fn next_char(input: &[u8], index: &mut usize, peek: bool) -> Option<Result<char, (u8, usize)>> {
+fn next_char<F>(
+    input: &[u8],
+    index: &mut usize,
+    peek: bool,
+    file: F,
+    offset: usize,
+    errs: &mut dyn ErrorReporter<TokenizeError<F>>,
+) -> Option<Result<char, bool>> {
     let b = *input.get(*index)?;
     let (res, incr) = match b.leading_ones() {
         0 => (Ok(b as char), 1),
@@ -75,10 +82,22 @@ fn next_char(input: &[u8], index: &mut usize, peek: bool) -> Option<Result<char,
         }
         _ => (Err((b, *index)), 1),
     };
+
+    let start = *index;
+
     if !peek || res.is_err() {
         *index += incr;
     }
-    Some(res)
+
+    Some(res.map_err(|(byte, off)| {
+        errs.report(TokenizeError {
+            file,
+            error: TokenizeErrorKind::InvalidUTF8 {
+                span: (offset + start + off, 1).into(),
+                byte,
+            },
+        })
+    }))
 }
 
 fn tokenize_bytes<'src, F: Copy>(
@@ -89,38 +108,36 @@ fn tokenize_bytes<'src, F: Copy>(
 ) -> Vec<Token<'src, SourceSpan>> {
     let mut index = 0;
     let mut tokens = Vec::new();
-    while let Some(ch) = next_char(input, &mut index, true) {
+    while let Some(ch) = next_char(input, &mut index, true, file, offset, errs) {
+        let ch = match ch {
+            Ok(ch) => ch,
+            Err(ret) => {
+                if ret {
+                    break;
+                } else {
+                    continue;
+                }
+            }
+        };
         match ch {
-            Ok('+' | '-') if matches!(input.get(index + 1).copied(), Some(b'0'..=b'9')) => {
+            '+' | '-' if matches!(input.get(index + 1).copied(), Some(b'0'..=b'9')) => {
                 literals::parse_num(input, &mut index, offset, &mut tokens, file, errs)
             }
-            Ok('0'..='9') => {
-                literals::parse_num(input, &mut index, offset, &mut tokens, file, errs)
-            }
-            Ok('#') => misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs),
-            Ok(ch) if ch.is_whitespace() => {
+            '0'..='9' => literals::parse_num(input, &mut index, offset, &mut tokens, file, errs),
+            '\'' => literals::parse_char(input, &mut index, offset, &mut tokens, file, errs),
+            '#' => misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs),
+            ch if ch.is_whitespace() => {
                 misc::parse_comment(input, &mut index, offset, &mut tokens, file, errs)
             }
-            Ok('_') => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
-            Ok(ch) if unicode_ident::is_xid_start(ch) => {
+            '_' => misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs),
+            ch if unicode_ident::is_xid_start(ch) => {
                 misc::parse_ident(input, &mut index, offset, &mut tokens, file, errs)
             }
-            Ok(ch) => {
+            ch => {
                 if errs.report(
                     TokenizeErrorKind::UnexpectedChar {
                         span: (offset + index, 1).into(),
                         found: ch,
-                    }
-                    .with_src(file),
-                ) {
-                    return tokens;
-                }
-            }
-            Err((b, idx)) => {
-                if errs.report(
-                    TokenizeErrorKind::InvalidUTF8 {
-                        span: (offset + idx, 1).into(),
-                        byte: b,
                     }
                     .with_src(file),
                 ) {

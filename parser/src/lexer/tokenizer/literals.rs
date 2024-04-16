@@ -160,3 +160,168 @@ pub fn parse_num<'src, F>(
         )
     }
 }
+
+pub fn parse_char<'src, F: Copy>(
+    input: &'src [u8],
+    index: &mut usize,
+    offset: usize,
+    tokens: &mut Vec<Token<'src, SourceSpan>>,
+    file: F,
+    errs: &mut dyn ErrorReporter<TokenizeError<F>>,
+) {
+    let start = *index;
+    let Some(Ok(ch)) = next_char(input, index, false, file, offset, errs) else {
+        return;
+    };
+    if ch != '\'' {
+        return;
+    }
+    let Some(Ok(ch)) = next_char(input, index, false, file, offset, errs) else {
+        let _ = errs.report(
+            TokenizeErrorKind::UnclosedCharLit {
+                span: (start, 1).into(),
+                end: *index,
+            }
+            .with_src(file),
+        );
+        return;
+    };
+    let val = match ch {
+        '\'' => {
+            tokens.push(Token {
+                kind: TokenKind::Char(0),
+                span: (offset + start, 2).into(),
+            });
+            return;
+        }
+        '\\' => {
+            if let Some(&b) = input.get(*index) {
+                if next_char(input, index, false, file, offset, errs) == Some(Err(true)) {
+                    return;
+                }
+                match b {
+                    b'0' => b'\0' as u32,
+                    b'n' => b'\n' as u32,
+                    b'r' => b'\r' as u32,
+                    b't' => b'\t' as u32,
+                    b'u' => 'unicode: {
+                        match next_char(input, index, false, file, offset, errs) {
+                            Some(Err(true)) => return,
+                            Some(Err(false)) => break 'unicode 0,
+                            Some(Ok('{')) => {
+                                let res = std::iter::from_fn(|| {
+                                    next_char(input, index, false, file, offset, errs)
+                                })
+                                .take(6)
+                                .take_while(|c| c.map_or(true, |c| c.is_ascii_hexdigit()))
+                                .try_fold(0, |out, ch| ch?.to_digit(16).map(|c| (out << 4) | c).ok_or(false));
+                                let ch = match res {
+                                    Ok(ch) => ch,
+                                    Err(true) => return,
+                                    Err(false) => 0,
+                                };
+                                match next_char(input, index, false, file, offset, errs) {
+                                    Some(Err(true)) => return,
+                                    Some(Err(false)) => break 'unicode 0,
+                                    Some(Ok('}')) => {}
+                                    Some(Ok(c)) => {
+                                        let l = c.len_utf8();
+                                        if errs.report(
+                                            TokenizeErrorKind::ExpectedUnicodeBrace {
+                                                close: true,
+                                                span: (*index - l + offset, l).into(),
+                                                found: c,
+                                            }
+                                            .with_src(file),
+                                        ) {
+                                            return;
+                                        } else {
+                                            break 'unicode 0;
+                                        }
+                                    }
+                                    None => {
+                                        let _ = errs.report(
+                                            TokenizeErrorKind::UnclosedCharLit {
+                                                span: (start + offset, 1).into(),
+                                                end: *index + offset,
+                                            }
+                                            .with_src(file),
+                                        );
+                                        return;
+                                    }
+                                }
+                                ch
+                            }
+                            Some(Ok(c)) => {
+                                let l = c.len_utf8();
+                                if errs.report(
+                                    TokenizeErrorKind::ExpectedUnicodeBrace {
+                                        close: false,
+                                        span: (*index - l + offset, l).into(),
+                                        found: c,
+                                    }
+                                    .with_src(file),
+                                ) {
+                                    return;
+                                } else {
+                                    break 'unicode 0;
+                                }
+                            }
+                            None => {
+                                let _ = errs.report(
+                                    TokenizeErrorKind::UnclosedCharLit {
+                                        span: (start + offset, 1).into(),
+                                        end: *index + offset,
+                                    }
+                                    .with_src(file),
+                                );
+                                return;
+                            }
+                        }
+                    }
+                    _ => {
+                        if errs.report(
+                            TokenizeErrorKind::UnknownEscapeCode {
+                                span: (*index + offset, 1).into(),
+                                code: b,
+                            }
+                            .with_src(file),
+                        ) {
+                            return;
+                        } else {
+                            0
+                        }
+                    }
+                }
+            } else {
+                let _ = errs.report(
+                    TokenizeErrorKind::UnclosedCharLit {
+                        span: (start + offset, 1).into(),
+                        end: *index + offset,
+                    }
+                    .with_src(file),
+                );
+                return;
+            }
+        }
+        _ => ch as u32,
+    };
+    match next_char(input, index, false, file, offset, errs) {
+        Some(Err(true)) => return,
+        Some(Ok('\'') | Err(false)) => {}
+        Some(Ok(_)) | None => {
+            let _ = errs.report(
+                TokenizeErrorKind::UnclosedCharLit {
+                    span: (start + offset, 1).into(),
+                    end: *index + offset,
+                }
+                .with_src(file),
+            );
+            return;
+        }
+    }
+    tokens.push(Token {
+        kind: TokenKind::Char(val),
+        span: ((start + offset)..(*index + offset)).into(),
+    });
+}
