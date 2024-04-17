@@ -206,7 +206,11 @@ impl<H> DiagnosticPrint<std::io::Stderr, H> {
 }
 impl<W, H> DiagnosticPrint<W, H> {
     pub const fn new(writer: W, handler: H) -> Self {
-        Self {writer, handler, error: None}
+        Self {
+            writer,
+            handler,
+            error: None,
+        }
     }
     pub fn take_result(&mut self) -> Result<(), std::io::Error> {
         if let Some(err) = self.error.take() {
@@ -223,7 +227,9 @@ impl<W, H> DiagnosticPrint<W, H> {
         }
     }
 }
-impl<W: std::io::Write, H: miette::ReportHandler, E: Diagnostic> ErrorReporter<E> for DiagnosticPrint<W, H> {
+impl<W: std::io::Write, H: miette::ReportHandler, E: Diagnostic> ErrorReporter<E>
+    for DiagnosticPrint<W, H>
+{
     fn report(&mut self, err: E) -> bool {
         struct Helper<'a, H, E>(&'a H, &'a E);
         impl<H: miette::ReportHandler, E: Diagnostic> Display for Helper<'_, H, E> {

@@ -150,15 +150,17 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         if !(ch == '_' || is_xid_start(ch)) {
             return;
         }
-        let last = std::iter::from_fn(|| self.next_char(false))
+        let mut idx = self.index;
+        std::iter::from_fn(|| self.next_char(false).map(|r| r.map(|c| (c, self.index))))
             .map_while(|ch| ch.ok())
-            .take_while(|&ch| is_xid_continue(ch))
+            .take_while(|&(ch, i)| {
+                is_xid_continue(ch) && {
+                    idx = i;
+                    true
+                }
+            })
             .last();
-        if let Some(last) = last {
-            if self.index < self.input.len() {
-                self.index -= last.len_utf8();
-            }
-        }
+        self.index = idx;
         let ident = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
         self.tokens.push(Token {
             kind: TokenKind::Ident(ident),

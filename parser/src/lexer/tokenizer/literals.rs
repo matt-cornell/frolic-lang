@@ -136,7 +136,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 Some(Ok('{')) => {
                                     let mut last = '}';
                                     let res = std::iter::from_fn(|| self.next_char(false))
-                                        .take(6)
+                                        .take(7)
                                         .take_while(|c| {
                                             c.map_or(true, |c| {
                                                 last = c;
@@ -188,7 +188,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         }
                         _ => {
                             if self.report(TokenizeError::UnknownEscapeCode {
-                                span: (self.index + self.offset, 1).into(),
+                                span: (self.index + self.offset - 1, 1).into(),
                                 code: b,
                             }) {
                                 return;

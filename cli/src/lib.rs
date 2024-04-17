@@ -5,7 +5,12 @@ use std::path::PathBuf;
 pub mod debug;
 
 pub trait Runnable: Sized {
-    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(self, stdin: I, stdout: O, stderr: E) -> eyre::Result<()>;
+    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
+        self,
+        stdin: I,
+        stdout: O,
+        stderr: E,
+    ) -> eyre::Result<()>;
     fn run_stdio(self) -> eyre::Result<()> {
         self.run(io::stdin(), io::stdout(), io::stderr())
     }
@@ -21,7 +26,12 @@ pub enum FrolicCli {
     Debug(debug::FrolicDebug),
 }
 impl Runnable for FrolicCli {
-    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(self, stdin: I, stdout: O, stderr: E) -> eyre::Result<()> {
+    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
+        self,
+        stdin: I,
+        stdout: O,
+        stderr: E,
+    ) -> eyre::Result<()> {
         match self {
             Self::Debug(cmd) => cmd.run(stdin, stdout, stderr),
         }

@@ -153,6 +153,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                     }) {
                         return;
                     }
+                    let _ = self.next_char(false);
                 }
             }
         }
@@ -201,7 +202,12 @@ where
 }
 
 #[cfg(not(feature = "rayon"))]
-pub fn tokenize<'src, S: AsRef<[u8]> + ?Sized, F, E: ErrorReporter<SourcedError<F, TokenizeError>>>(
+pub fn tokenize<
+    'src,
+    S: AsRef<[u8]> + ?Sized,
+    F,
+    E: ErrorReporter<SourcedError<F, TokenizeError>>,
+>(
     input: &'src S,
     file: F,
     errs: E,

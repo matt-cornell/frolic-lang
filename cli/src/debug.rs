@@ -5,7 +5,12 @@ pub enum FrolicDebug {
     Lex(FrolicDebugLex),
 }
 impl Runnable for FrolicDebug {
-    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(self, stdin: I, stdout: O, stderr: E) -> eyre::Result<()> {
+    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
+        self,
+        stdin: I,
+        stdout: O,
+        stderr: E,
+    ) -> eyre::Result<()> {
         match self {
             Self::Lex(cmd) => cmd.run(stdin, stdout, stderr),
         }
@@ -22,7 +27,12 @@ pub struct FrolicDebugLex {
     pub path: Option<PathBuf>,
 }
 impl Runnable for FrolicDebugLex {
-    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(self, _stdin: I, mut stdout: O, stderr: E) -> eyre::Result<()> {
+    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
+        self,
+        _stdin: I,
+        mut stdout: O,
+        stderr: E,
+    ) -> eyre::Result<()> {
         use frolic_parser::prelude::*;
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
@@ -54,7 +64,11 @@ impl Runnable for FrolicDebugLex {
                 path: Some(path),
             } => {
                 let code = std::fs::read(&path)?;
-                let file = FILE_REGISTRY.add_file(PackageId::ROOT, path.into_os_string().to_string_lossy(), code);
+                let file = FILE_REGISTRY.add_file(
+                    PackageId::ROOT,
+                    path.into_os_string().to_string_lossy(),
+                    code,
+                );
                 let toks = tokenize::<_, FileId, &Reporter<E>>(file.contents(), file, &errs);
 
                 let errs = errs.into_inner().unwrap();
