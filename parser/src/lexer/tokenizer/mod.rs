@@ -108,8 +108,8 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
 
         Some(res.map_err(|(byte, off)| {
             self.report(TokenizeError::InvalidUTF8 {
-                    span: (self.offset + off, 1).into(),
-                    byte,
+                span: (self.offset + off, 1).into(),
+                byte,
             })
         }))
     }
@@ -118,7 +118,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
     fn report(&mut self, err: TokenizeError) -> bool {
         self.errs.report(SourcedError {
             error: err,
-            file: self.file
+            file: self.file,
         })
     }
 
@@ -147,12 +147,10 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 '_' => self.parse_ident(),
                 ch if unicode_ident::is_xid_start(ch) => self.parse_ident(),
                 ch => {
-                    if self.report(
-                        TokenizeError::UnexpectedChar {
-                            span: (self.offset + self.index, 1).into(),
-                            found: ch,
-                        }
-                    ) {
+                    if self.report(TokenizeError::UnexpectedChar {
+                        span: (self.offset + self.index, 1).into(),
+                        found: ch,
+                    }) {
                         return;
                     }
                 }
@@ -191,7 +189,7 @@ where
 
 #[cfg(feature = "rayon")]
 #[inline(never)]
-pub fn tokenize<'src, S: AsRef<[u8]>, F: Copy + Send + Sync, E: Sync>(
+pub fn tokenize<'src, S: AsRef<[u8]> + ?Sized, F: Copy + Send + Sync, E: Sync>(
     input: &'src S,
     file: F,
     errs: E,
@@ -203,7 +201,7 @@ where
 }
 
 #[cfg(not(feature = "rayon"))]
-pub fn tokenize<'src, S: AsRef<[u8]>, F, E: ErrorReporter<SourcedError<F, TokenizeError>>>(
+pub fn tokenize<'src, S: AsRef<[u8]> + ?Sized, F, E: ErrorReporter<SourcedError<F, TokenizeError>>>(
     input: &'src S,
     file: F,
     errs: E,

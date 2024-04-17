@@ -1,7 +1,7 @@
-use std::rc::Rc;
-use std::sync::{Arc, Mutex, OnceLock};
 use miette::{Diagnostic, SourceCode};
 use std::fmt::{self, Debug, Display, Formatter};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcedError<F, E> {
@@ -190,5 +190,53 @@ where
         let mut this: &'a T = &self.0;
         let _ = this.report(err);
         true
+    }
+}
+
+#[derive(Debug)]
+pub struct DiagnosticPrint<W, H> {
+    pub writer: W,
+    pub handler: H,
+    pub error: Option<std::io::Error>,
+}
+impl<H> DiagnosticPrint<std::io::Stderr, H> {
+    pub fn stderr(handler: H) -> Self {
+        Self::new(std::io::stderr(), handler)
+    }
+}
+impl<W, H> DiagnosticPrint<W, H> {
+    pub const fn new(writer: W, handler: H) -> Self {
+        Self {writer, handler, error: None}
+    }
+    pub fn take_result(&mut self) -> Result<(), std::io::Error> {
+        if let Some(err) = self.error.take() {
+            Err(err)
+        } else {
+            Ok(())
+        }
+    }
+    pub fn into_result(self) -> Result<(), std::io::Error> {
+        if let Some(err) = self.error {
+            Err(err)
+        } else {
+            Ok(())
+        }
+    }
+}
+impl<W: std::io::Write, H: miette::ReportHandler, E: Diagnostic> ErrorReporter<E> for DiagnosticPrint<W, H> {
+    fn report(&mut self, err: E) -> bool {
+        struct Helper<'a, H, E>(&'a H, &'a E);
+        impl<H: miette::ReportHandler, E: Diagnostic> Display for Helper<'_, H, E> {
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                self.0.debug(self.1, f)
+            }
+        }
+        let res = write!(self.writer, "{}", Helper(&self.handler, &err));
+        if let Err(e) = res {
+            self.error = Some(e);
+            true
+        } else {
+            false
+        }
     }
 }

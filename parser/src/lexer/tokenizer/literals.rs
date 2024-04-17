@@ -18,13 +18,11 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                 b'0'..=b'9' => {
                     let x = c - b'0';
                     if x >= kind as u8 {
-                        let _ = self.report(
-                            TokenizeError::InvalidCharInLit {
-                                span: (self.offset + self.index, 1).into(),
-                                found: c as _,
-                                kind,
-                            }
-                        );
+                        let _ = self.report(TokenizeError::InvalidCharInLit {
+                            span: (self.offset + self.index, 1).into(),
+                            found: c as _,
+                            kind,
+                        });
                         return;
                     }
                     int *= 10;
@@ -79,37 +77,17 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         if self.input[self.index] == b'0' {
             self.index += 1;
             match self.input.get(self.index) {
-                Some(&b'b') => self.parse_num_impl(
-                    start,
-                    LitKind::Binary,
-                    neg,
-                ),
-                Some(&b'o') => self.parse_num_impl(
-                    start,
-                    LitKind::Octal,
-                    neg,
-                ),
-                Some(&b'x') => self.parse_num_impl(
-                    start,
-                    LitKind::Hex,
-                    neg,
-                ),
-                Some(b'0'..=b'9') => self.parse_num_impl(
-                    start,
-                    LitKind::Decimal,
-                    neg,
-                ),
+                Some(&b'b') => self.parse_num_impl(start, LitKind::Binary, neg),
+                Some(&b'o') => self.parse_num_impl(start, LitKind::Octal, neg),
+                Some(&b'x') => self.parse_num_impl(start, LitKind::Hex, neg),
+                Some(b'0'..=b'9') => self.parse_num_impl(start, LitKind::Decimal, neg),
                 _ => self.tokens.push(Token {
                     kind: TokenKind::Int(0),
                     span: (self.offset + start, 1).into(),
                 }),
             }
         } else {
-            self.parse_num_impl(
-                start,
-                LitKind::Decimal,
-                neg,
-            )
+            self.parse_num_impl(start, LitKind::Decimal, neg)
         }
     }
 
@@ -122,12 +100,10 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
             return;
         }
         let Some(Ok(ch)) = self.next_char(false) else {
-            let _ = self.report(
-                TokenizeError::UnclosedCharLit {
-                    span: (start + self.offset, 1).into(),
-                    end: self.index + self.offset,
-                }
-            );
+            let _ = self.report(TokenizeError::UnclosedCharLit {
+                span: (start + self.offset, 1).into(),
+                end: self.index + self.offset,
+            });
             return;
         };
         let val = match ch {
@@ -155,14 +131,16 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 Some(Ok('{')) => {
                                     let mut last = '}';
                                     let res = std::iter::from_fn(|| self.next_char(false))
-                                    .take(6)
-                                    .take_while(|c| c.map_or(true, |c| {
-                                        last = c;
-                                        c.is_ascii_hexdigit()
-                                    }))
-                                    .try_fold(0, |out, ch| {
-                                        ch?.to_digit(16).map(|c| (out << 4) | c).ok_or(false)
-                                    });
+                                        .take(6)
+                                        .take_while(|c| {
+                                            c.map_or(true, |c| {
+                                                last = c;
+                                                c.is_ascii_hexdigit()
+                                            })
+                                        })
+                                        .try_fold(0, |out, ch| {
+                                            ch?.to_digit(16).map(|c| (out << 4) | c).ok_or(false)
+                                        });
                                     let ch = match res {
                                         Ok(ch) => ch,
                                         Err(true) => return,
@@ -170,13 +148,11 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                     };
                                     if last != '}' {
                                         let l = last.len_utf8();
-                                        if self.report(
-                                            TokenizeError::ExpectedUnicodeBrace {
-                                                close: true,
-                                                span: (self.index - l + self.offset, l).into(),
-                                                found: last,
-                                            }
-                                        ) {
+                                        if self.report(TokenizeError::ExpectedUnicodeBrace {
+                                            close: true,
+                                            span: (self.index - l + self.offset, l).into(),
+                                            found: last,
+                                        }) {
                                             return;
                                         } else {
                                             break 'unicode 0;
@@ -186,36 +162,30 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 }
                                 Some(Ok(c)) => {
                                     let l = c.len_utf8();
-                                    if self.report(
-                                        TokenizeError::ExpectedUnicodeBrace {
-                                            close: false,
-                                            span: (self.index - l + self.offset, l).into(),
-                                            found: c,
-                                        }
-                                    ) {
+                                    if self.report(TokenizeError::ExpectedUnicodeBrace {
+                                        close: false,
+                                        span: (self.index - l + self.offset, l).into(),
+                                        found: c,
+                                    }) {
                                         return;
                                     } else {
                                         break 'unicode 0;
                                     }
                                 }
                                 None => {
-                                    let _ = self.report(
-                                        TokenizeError::UnclosedCharLit {
-                                            span: (start + self.offset, 1).into(),
-                                            end: self.index + self.offset,
-                                        }
-                                    );
+                                    let _ = self.report(TokenizeError::UnclosedCharLit {
+                                        span: (start + self.offset, 1).into(),
+                                        end: self.index + self.offset,
+                                    });
                                     return;
                                 }
                             }
                         }
                         _ => {
-                            if self.report(
-                                TokenizeError::UnknownEscapeCode {
-                                    span: (self.index + self.offset, 1).into(),
-                                    code: b,
-                                }
-                            ) {
+                            if self.report(TokenizeError::UnknownEscapeCode {
+                                span: (self.index + self.offset, 1).into(),
+                                code: b,
+                            }) {
                                 return;
                             } else {
                                 0
@@ -223,12 +193,10 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         }
                     }
                 } else {
-                    let _ = self.report(
-                        TokenizeError::UnclosedCharLit {
-                            span: (start + self.offset, 1).into(),
-                            end: self.index + self.offset,
-                        }
-                    );
+                    let _ = self.report(TokenizeError::UnclosedCharLit {
+                        span: (start + self.offset, 1).into(),
+                        end: self.index + self.offset,
+                    });
                     return;
                 }
             }
@@ -238,12 +206,10 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
             Some(Err(true)) => return,
             Some(Ok('\'') | Err(false)) => {}
             Some(Ok(_)) | None => {
-                let _ = self.report(
-                    TokenizeError::UnclosedCharLit {
-                        span: (start + self.offset, 1).into(),
-                        end: self.index + self.offset,
-                    }
-                );
+                let _ = self.report(TokenizeError::UnclosedCharLit {
+                    span: (start + self.offset, 1).into(),
+                    end: self.index + self.offset,
+                });
                 return;
             }
         }

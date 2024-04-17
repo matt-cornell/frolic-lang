@@ -84,12 +84,10 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                             }
                         };
                         if !valid
-                            && self.report(
-                                TokenizeError::UnclosedMultiline {
-                                    span: (start + self.offset, len + 1).into(),
-                                    end: self.input.len() + self.offset,
-                                }
-                            )
+                            && self.report(TokenizeError::UnclosedMultiline {
+                                span: (start + self.offset, len + 1).into(),
+                                end: self.input.len() + self.offset,
+                            })
                         {
                             return;
                         }
