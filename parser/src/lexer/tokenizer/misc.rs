@@ -1,4 +1,5 @@
 use super::*;
+
 impl<'src, F: Copy> Lexer<'src, '_, F> {
     fn eat_comment(
         &mut self,
@@ -163,7 +164,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         self.index = idx;
         let ident = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
         self.tokens.push(Token {
-            kind: TokenKind::Ident(ident),
+            kind: TokenKind::from_ident(ident),
             span: ((start + self.offset)..(self.index + self.offset)).into(),
         });
     }

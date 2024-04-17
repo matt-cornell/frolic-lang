@@ -135,6 +135,32 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 }
             };
             match ch {
+                '\\' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Special(SpecialChar::Backslash),
+                        span: (self.index + self.offset, 1).into(),
+                    });
+                    self.index += 1;
+                }
+                ';' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Special(SpecialChar::Semicolon),
+                        span: (self.index + self.offset, 1).into(),
+                    });
+                    self.index += 1;
+                }
+                ':' => {
+                    let (ch, len) = if self.input.get(self.index + 1) == Some(&b':') {
+                        (SpecialChar::DoubleColon, 2)
+                    } else {
+                        (SpecialChar::Colon, 1)
+                    };
+                    self.tokens.push(Token {
+                        kind: TokenKind::Special(ch),
+                        span: (self.index + self.offset, len).into(),
+                    });
+                    self.index += len;
+                }
                 '+' | '-'
                     if matches!(self.input.get(self.index + 1).copied(), Some(b'0'..=b'9')) =>
                 {

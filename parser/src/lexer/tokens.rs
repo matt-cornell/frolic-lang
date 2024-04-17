@@ -24,6 +24,14 @@ pub enum CommentKind {
     InnerDoc,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SpecialChar {
+    Semicolon,
+    Colon,
+    DoubleColon,
+    Backslash,
+}
+
 #[derive(Clone, PartialEq)]
 pub enum TokenKind<'src> {
     Comment(Cow<'src, [u8]>, CommentKind),
@@ -35,6 +43,7 @@ pub enum TokenKind<'src> {
     Float(f64),
     Char(u32),
     String(Cow<'src, [u8]>),
+    Special(SpecialChar),
 }
 impl Debug for TokenKind<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -63,6 +72,7 @@ impl Debug for TokenKind<'_> {
                 .debug_tuple("String")
                 .field(&bstr::BStr::new(val))
                 .finish(),
+            Self::Special(sc) => f.debug_tuple("Special").field(sc).finish(),
         }
     }
 }

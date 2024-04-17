@@ -1,7 +1,5 @@
 use bstr::ByteSlice;
-
 use super::*;
-use crate::lexer::error::LitKind;
 
 impl<'src, F: Copy> Lexer<'src, '_, F> {
     fn parse_num_impl(&mut self, start: usize, kind: LitKind, neg: bool) {

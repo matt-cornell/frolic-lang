@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
+frolic-ast = { version = "0.0.1", path = "../ast" }
 frolic-parser = { version = "0.0.1", path = "../parser" }
 frolic-utils = { version = "0.1.0", path = "../utils" }
 miette = { workspace = true, features = ["fancy"] }

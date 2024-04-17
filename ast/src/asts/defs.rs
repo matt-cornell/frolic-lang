@@ -9,7 +9,7 @@ pub struct FnParam<'src, A: Located> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FnDefAST<'src, A: ExpressionAST + Located> {
+pub struct FnDefAST<'src, A: Located> {
     pub kw: A::Span,
     pub oparen: A::Span,
     pub cparen: A::Span,
@@ -18,7 +18,7 @@ pub struct FnDefAST<'src, A: ExpressionAST + Located> {
     pub ret: Option<A>,
     pub body: Option<A>,
 }
-impl<A: ExpressionAST + Located> Located for FnDefAST<'_, A> {
+impl<A: Located> Located for FnDefAST<'_, A> {
     type Span = A::Span;
 
     fn loc(&self) -> Self::Span {
@@ -31,17 +31,15 @@ impl<A: ExpressionAST + Located> Located for FnDefAST<'_, A> {
         }
     }
 }
-impl<A: ExpressionAST + Located> StatementAST for FnDefAST<'_, A> {}
-impl<A: ExpressionAST + Located> TopLevelAST for FnDefAST<'_, A> {}
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VarDefAST<'src, A: ExpressionAST + Located> {
+pub struct VarDefAST<'src, A: Located> {
     pub kw: A::Span,
     pub name: DottedName<'src, A::Span>,
     pub ty: Option<A>,
     pub val: Option<A>,
 }
-impl<A: ExpressionAST + Located> Located for VarDefAST<'_, A> {
+impl<A: Located> Located for VarDefAST<'_, A> {
     type Span = A::Span;
 
     fn loc(&self) -> Self::Span {
