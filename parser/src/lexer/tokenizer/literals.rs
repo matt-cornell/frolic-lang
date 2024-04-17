@@ -1,3 +1,5 @@
+use bstr::ByteSlice;
+
 use super::*;
 use crate::lexer::error::LitKind;
 
@@ -220,6 +222,115 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         }
         self.tokens.push(Token {
             kind: TokenKind::Char(val),
+            span: ((start + self.offset)..(self.index + self.offset)).into(),
+        });
+    }
+
+    pub fn parse_str(&mut self) {
+        let start = self.index;
+        let Some(Ok(ch)) = self.next_char(false) else {
+            return;
+        };
+        if ch != '\"' {
+            return;
+        }
+        let mut out = Cow::Borrowed(&[][..]);
+        let mut last = self.index;
+        loop {
+            if let Some(idx) = self.input[self.index..].find_byteset(b"\\\"") {
+                self.index += idx;
+                if idx > 0 {
+                    let slice = &self.input[last..self.index];
+                    if out.is_empty() {
+                        out = slice.into();
+                    } else {
+                        out.to_mut().extend_from_slice(slice);
+                    }
+                }
+                if self.input[self.index] == b'"' {
+                    self.index += 1;
+                    break;
+                }
+                self.index += 1;
+                let Some(&b) = self.input.get(self.index) else {
+                    continue;
+                };
+                self.index += 1;
+                match b {
+                    b'0' => out.to_mut().push(b'\0'),
+                    b'n' => out.to_mut().push(b'\n'),
+                    b'r' => out.to_mut().push(b'\r'),
+                    b't' => out.to_mut().push(b'\t'),
+                    b'u' => match self.next_char(false) {
+                        Some(Err(true)) => return,
+                        Some(Err(false)) => {}
+                        Some(Ok('{')) => {
+                            let mut last = '}';
+                            let res = std::iter::from_fn(|| self.next_char(false))
+                                .take(7)
+                                .take_while(|c| {
+                                    c.map_or(true, |c| {
+                                        last = c;
+                                        c.is_ascii_hexdigit()
+                                    })
+                                })
+                                .try_fold(0, |out, ch| {
+                                    ch?.to_digit(16).map(|c| (out << 4) | c).ok_or(false)
+                                });
+                            let ch = match res {
+                                Ok(ch) => ch,
+                                Err(true) => return,
+                                Err(false) => 0,
+                            };
+                            if last != '}' {
+                                let l = last.len_utf8();
+                                if self.report(TokenizeError::ExpectedUnicodeBrace {
+                                    close: true,
+                                    span: (self.index - l + self.offset, l).into(),
+                                    found: last,
+                                }) {
+                                    return;
+                                }
+                            }
+                            out.to_mut()
+                                .extend(CharBytesIterator::from_u32(ch).unwrap());
+                        }
+                        Some(Ok(c)) => {
+                            let l = c.len_utf8();
+                            if self.report(TokenizeError::ExpectedUnicodeBrace {
+                                close: false,
+                                span: (self.index - l + self.offset, l).into(),
+                                found: c,
+                            }) {
+                                return;
+                            }
+                        }
+                        None => continue,
+                    },
+                    _ => {
+                        if self.report(TokenizeError::UnknownEscapeCode {
+                            span: (self.index + self.offset - 1, 1).into(),
+                            code: b,
+                        }) {
+                            return;
+                        }
+                    }
+                }
+                last = self.index;
+            } else {
+                self.tokens.push(Token {
+                    kind: TokenKind::String(out),
+                    span: ((start + self.offset)..(self.index + self.offset)).into(),
+                });
+                let _ = self.report(TokenizeError::UnclosedStrLit {
+                    span: (start + self.offset, 1).into(),
+                    end: self.index + self.offset,
+                });
+                return;
+            }
+        }
+        self.tokens.push(Token {
+            kind: TokenKind::String(out),
             span: ((start + self.offset)..(self.index + self.offset)).into(),
         });
     }

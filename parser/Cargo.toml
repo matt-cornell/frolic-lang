@@ -13,6 +13,7 @@ strum = { version = "0.26.2", features = ["derive", "phf"] }
 thiserror.workspace = true
 miette.workspace = true
 unicode-ident = "1.0.12"
+bstr = { version = "1.9.1", default-features = false }
 
 [features]
 rayon = ["dep:rayon"]

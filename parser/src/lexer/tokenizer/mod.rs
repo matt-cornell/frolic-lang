@@ -142,6 +142,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 }
                 '0'..='9' => self.parse_num(),
                 '\'' => self.parse_char(),
+                '"' => self.parse_str(),
                 '#' => self.parse_comment(),
                 ch if ch.is_whitespace() => self.parse_comment(),
                 '_' => self.parse_ident(),

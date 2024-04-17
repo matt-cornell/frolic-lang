@@ -1,4 +1,5 @@
 use super::*;
+use std::fmt::{self, Debug, Formatter};
 use strum::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
@@ -23,7 +24,7 @@ pub enum CommentKind {
     InnerDoc,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum TokenKind<'src> {
     Comment(Cow<'src, [u8]>, CommentKind),
     Ident(&'src str),
@@ -34,6 +35,36 @@ pub enum TokenKind<'src> {
     Float(f64),
     Char(u32),
     String(Cow<'src, [u8]>),
+}
+impl Debug for TokenKind<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Comment(comm, kind) => f
+                .debug_tuple("Comment")
+                .field(&bstr::BStr::new(comm))
+                .field(kind)
+                .finish(),
+            Self::Ident(id) => f.debug_tuple("Ident").field(id).finish(),
+            Self::Keyword(kw) => f.debug_tuple("Keyword").field(kw).finish(),
+            Self::Open(delim) => f.debug_tuple("Open").field(delim).finish(),
+            Self::Close(delim) => f.debug_tuple("Close").field(delim).finish(),
+            Self::Int(val) => f.debug_tuple("Int").field(val).finish(),
+            Self::Float(val) => f.debug_tuple("Float").field(val).finish(),
+            Self::Char(val) => {
+                let mut tup = f.debug_tuple("Char");
+                if let Ok(ch) = char::try_from(*val) {
+                    tup.field(&ch);
+                } else {
+                    tup.field(val);
+                }
+                tup.finish()
+            }
+            Self::String(val) => f
+                .debug_tuple("String")
+                .field(&bstr::BStr::new(val))
+                .finish(),
+        }
+    }
 }
 
 impl<'src> TokenKind<'src> {
