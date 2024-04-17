@@ -1,6 +1,6 @@
+use std::fmt::Debug;
 use std::marker::Unsize;
 use std::ops::{CoerceUnsized, Deref};
-use std::fmt::Debug;
 
 pub trait AllImplTrait<T: ?Sized> {
     type First: Unsize<T> + ?Sized;
@@ -33,7 +33,9 @@ pub trait AstDefs {
     type AstTrait<'a>: Unsize<Self::AstTrait<'a>> + ?Sized + 'a;
     type Box<T: ?Sized>: Deref<Target = T>;
 
-    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> impl CoerceUnsized<Self::Box<Self::AstTrait<'a>>>;
+    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(
+        val: T,
+    ) -> impl CoerceUnsized<Self::Box<Self::AstTrait<'a>>>;
 }
 
 #[macro_export]
@@ -49,7 +51,9 @@ impl AstDefs for DebugAsts {
     type AstTrait<'a> = dyn Debug + 'a;
     type Box<T: ?Sized> = Box<T>;
 
-    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> impl CoerceUnsized<Self::Box<Self::AstTrait<'a>>> {
+    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(
+        val: T,
+    ) -> impl CoerceUnsized<Self::Box<Self::AstTrait<'a>>> {
         Box::new(val)
     }
 }
