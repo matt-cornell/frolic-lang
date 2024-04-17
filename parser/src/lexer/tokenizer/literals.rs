@@ -3,8 +3,12 @@ use crate::lexer::error::LitKind;
 
 impl<'src, F: Copy> Lexer<'src, '_, F> {
     fn parse_num_impl(&mut self, start: usize, kind: LitKind, neg: bool) {
+        if kind != LitKind::Decimal {
+            self.index += 1;
+        }
         let mut int = 0;
         let mul = if neg { -1 } else { 1 };
+        let base = kind as u8 as i128;
         loop {
             let Some(&c) = self.input.get(self.index) else {
                 self.tokens.push(Token {
@@ -25,16 +29,16 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         });
                         return;
                     }
-                    int *= 10;
+                    int *= base;
                     int += x as i128;
                 }
                 b'a'..=b'f' if kind == LitKind::Hex => {
-                    int *= 10;
+                    int *= 16;
                     int += 10;
                     int += (c - b'a') as i128;
                 }
                 b'A'..=b'F' if kind == LitKind::Hex => {
-                    int *= 10;
+                    int *= 16;
                     int += 10;
                     int += (c - b'A') as i128;
                 }
@@ -54,6 +58,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
         while let Some(c @ b'0'..=b'9') = self.input.get(self.index) {
             float += (c - b'0') as f64 * mul;
             mul *= 0.1;
+            self.index += 1;
         }
         self.tokens.push(Token {
             kind: TokenKind::Float(float * if neg { -1.0 } else { 1.0 }),
