@@ -22,11 +22,17 @@ impl Runnable for FrolicDebug {
 /// Common debug args.
 #[derive(Debug, Clone, Args)]
 #[group(required = true, multiple = false)]
-pub struct FrolicDebugLex {
+pub struct Source {
     #[arg(short, long)]
     pub code: Option<String>,
     #[arg(short, long)]
     pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct FrolicDebugLex {
+    #[command(flatten)]
+    source: Source,
 }
 impl Runnable for FrolicDebugLex {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -40,28 +46,20 @@ impl Runnable for FrolicDebugLex {
         use std::sync::Mutex;
 
         let errs = DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new());
-
         let errs = Mutex::new(errs);
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        match self {
-            Self {
+        let toks = match self.source {
+            Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
                 let toks = tokenize::<_, FileId, &Reporter<E>>(file.contents(), file, &errs);
-
-                let errs = errs.into_inner().unwrap();
-
-                errs.into_result()?;
-
-                for tok in toks {
-                    writeln!(stdout, "{tok:?}")?;
-                }
+                toks
             }
-            Self {
+            Source {
                 code: None,
                 path: Some(path),
             } => {
@@ -72,28 +70,26 @@ impl Runnable for FrolicDebugLex {
                     code,
                 );
                 let toks = tokenize::<_, FileId, &Reporter<E>>(file.contents(), file, &errs);
-
-                let errs = errs.into_inner().unwrap();
-
-                errs.into_result()?;
-
-                for tok in toks {
-                    writeln!(stdout, "{tok:?}")?;
-                }
+                toks
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
+        };
+
+        for tok in toks {
+            writeln!(stdout, "{tok:?}")?;
         }
+
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, Args)]
-#[group(required = true, multiple = false)]
 pub struct FrolicDebugParse {
+    #[command(flatten)]
+    source: Source,
+    /// Parse as an expression instead of top-level
     #[arg(short, long)]
-    pub code: Option<String>,
-    #[arg(short, long)]
-    pub path: Option<PathBuf>,
+    expr: bool,
 }
 impl Runnable for FrolicDebugParse {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -108,26 +104,20 @@ impl Runnable for FrolicDebugParse {
         use std::sync::Mutex;
 
         let errs = DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new());
-
         let errs = Mutex::new(errs);
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        match self {
-            Self {
+        let (file, toks) = match self.source {
+            Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
                 let toks = tokenize::<_, FileId, &Reporter<E>>(file.contents(), file, &errs);
-                let ast = parse::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
-
-                let errs = errs.into_inner().unwrap();
-                errs.into_result()?;
-
-                write!(stdout, "{ast:#?}")?;
+                (file, toks)
             }
-            Self {
+            Source {
                 code: None,
                 path: Some(path),
             } => {
@@ -138,15 +128,20 @@ impl Runnable for FrolicDebugParse {
                     code,
                 );
                 let toks = tokenize::<_, FileId, &Reporter<E>>(file.contents(), file, &errs);
-                let ast = parse::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
-
-                let errs = errs.into_inner().unwrap();
-                errs.into_result()?;
-
-                write!(stdout, "{ast:#?}")?;
+                (file, toks)
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
+        };
+
+        if self.expr {
+            let ast = parse_expr::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
+            write!(stdout, "{ast:#?}")?;
+        } else {
+            let ast = parse_tl::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
+            write!(stdout, "{ast:#?}")?;
         }
+        errs.into_inner().unwrap().into_result()?;
+
         Ok(())
     }
 }

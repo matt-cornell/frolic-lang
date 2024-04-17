@@ -10,5 +10,5 @@ pub mod parser;
 pub mod prelude {
     pub use crate::lexer::tokenizer::tokenize;
     pub use crate::lexer::tokens::{self, Token, TokenKind};
-    pub use crate::parser::parse;
+    pub use crate::parser::{parse_tl, parse_expr};
 }
