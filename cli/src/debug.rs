@@ -1,5 +1,4 @@
 use super::*;
-use miette::SourceSpan;
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum FrolicDebug {
@@ -50,7 +49,7 @@ impl Runnable for FrolicDebugLex {
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        let toks: Vec<Token<SourceSpan>> = match self.source {
+        let toks: Vec<Token<PrettySpan>> = match self.source {
             Source {
                 code: Some(code),
                 path: None,
@@ -106,7 +105,7 @@ impl Runnable for FrolicDebugParse {
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        let (file, toks): (_, Vec<Token<SourceSpan>>) = match self.source {
+        let (file, toks): (_, Vec<Token<PrettySpan>>) = match self.source {
             Source {
                 code: Some(code),
                 path: None,

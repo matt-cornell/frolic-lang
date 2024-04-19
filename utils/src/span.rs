@@ -1,18 +1,63 @@
 use miette::SourceSpan;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
 
+/// Like a `SourceSpan`, but with a nicer `Debug`
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PrettySpan {
+    pub offset: usize,
+    pub len: usize,
+}
+impl Debug for PrettySpan {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.offset, self.offset + self.len)
+    }
+}
+impl From<PrettySpan> for miette::SourceSpan {
+    fn from(value: PrettySpan) -> Self {
+        (value.offset, value.len).into()
+    }
+}
+impl Span for PrettySpan {
+    fn merge(self, other: Self) -> Self {
+        Self {
+            offset: self.offset,
+            len: other.offset + other.len - self.offset,
+        }
+    }
+    
+    fn offset(self) -> usize {
+        self.offset
+    }
+    fn len(self) -> usize {
+        self.len
+    }
+}
+impl SpanConstruct for PrettySpan {
+    fn new(offset: usize, len: usize) -> Self {
+        Self {
+            offset, len
+        }
+    }
+}
+
+/// General implementation of a span trait. Spans must be able to be merged, and they have an
+/// offset and length (in bytes)
 pub trait Span: Copy + Debug + Into<SourceSpan> + 'static {
     fn merge(self, other: Self) -> Self;
 
     fn offset(self) -> usize;
     fn len(self) -> usize;
+    fn end(self) -> usize {
+        self.offset() + self.len()
+    }
     fn is_empty(self) -> bool {
         self.len() == 0
     }
 }
 
+/// A span that can be constructed from byte indices.
 pub trait SpanConstruct: Span {
     fn new(offset: usize, len: usize) -> Self;
     fn range(start: usize, end: usize) -> Self {
