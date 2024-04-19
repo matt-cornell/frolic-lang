@@ -6,6 +6,7 @@ use traits::*;
 
 mod decl;
 mod error;
+mod expr;
 pub mod traits;
 
 /// Bundle of common state for parser
@@ -16,7 +17,18 @@ struct Parser<'src, 'a, A, F> {
     errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src>>>,
     _asts: PhantomData<A>,
 }
-impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F> {
+impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F>
+where
+    A::AstBox<'src>: Located<Span = SourceSpan>,
+    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+{
     /// Create a new parser
     pub fn new(
         input: &'a [Token<'src, SourceSpan>],
@@ -79,10 +91,7 @@ impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F> {
         )
     }
 
-    fn eat_comment(&mut self, out: &mut Vec<A::AstBox<'src>>) -> bool
-    where
-        asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    {
+    fn eat_comment(&mut self, out: &mut Vec<A::AstBox<'src>>) -> bool {
         loop {
             let Some(tok) = self.input.get(self.index) else {
                 return false;
@@ -178,23 +187,8 @@ impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F> {
         }
     }
 
-    /// Parse an expression. If not `allow_extra`, give an error with extra input.
-    pub fn parse_expr(
-        &mut self,
-        allow_extra: bool,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
-        todo!()
-    }
-
     /// Parse a program at the top level.
-    fn parse_top_level_impl(&mut self) -> (Vec<A::AstBox<'src>>, bool)
-    where
-        A::AstBox<'src>: Located<Span = SourceSpan>,
-        asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-        asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-        asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    {
+    fn parse_top_level_impl(&mut self) -> (Vec<A::AstBox<'src>>, bool) {
         let mut out = Vec::new();
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
@@ -224,13 +218,7 @@ impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F> {
         (out, false)
     }
 
-    pub fn parse_top_level(&mut self) -> Vec<A::AstBox<'src>>
-    where
-        A::AstBox<'src>: Located<Span = SourceSpan>,
-        asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-        asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-        asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    {
+    pub fn parse_top_level(&mut self) -> Vec<A::AstBox<'src>> {
         self.parse_top_level_impl().0
     }
 }
@@ -249,6 +237,12 @@ where
     A::AstBox<'src>: Located<Span = SourceSpan>,
     asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
     asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F>::new(input, file, &mut errs);
     parser.parse_expr(false, &mut vec![]).0
@@ -263,7 +257,12 @@ where
     A::AstBox<'src>: Located<Span = SourceSpan>,
     asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
     asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F>::new(input, file, &mut errs);
     let nodes = parser.parse_top_level();

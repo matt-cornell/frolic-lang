@@ -1,14 +1,22 @@
 use super::*;
 use smallvec::smallvec;
 
-impl<'src, A: AstDefs, F: Copy> Parser<'src, '_, A, F> {
+impl<'src, A: AstDefs, F: Copy> Parser<'src, '_, A, F>
+where
+    A::AstBox<'src>: Located<Span = SourceSpan>,
+    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+{
     fn parse_dottedname(
         &mut self,
         out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<DottedName<'src, SourceSpan>>, bool)
-    where
-        asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    {
+    ) -> (Option<DottedName<'src, SourceSpan>>, bool) {
         if self.eat_comment(out) {
             return (None, true);
         }
@@ -64,12 +72,7 @@ impl<'src, A: AstDefs, F: Copy> Parser<'src, '_, A, F> {
     pub fn parse_let_decl(
         &mut self,
         out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<asts::LetAST<'src, A::AstBox<'src>>>, bool)
-    where
-        A::AstBox<'src>: Located<Span = SourceSpan>,
-        asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-        asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    {
+    ) -> (Option<asts::LetAST<'src, A::AstBox<'src>>>, bool) {
         let kw = self.input[self.index].span;
         self.index += 1;
         let name = {

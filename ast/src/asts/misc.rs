@@ -33,3 +33,28 @@ impl<S: Span> Located for ErrorAST<S> {
         self.loc
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VarAST<'src, S> {
+    pub name: Cow<'src, str>,
+    pub loc: S,
+}
+impl<S: Span> Located for VarAST<'_, S> {
+    type Span = S;
+
+    fn loc(&self) -> Self::Span {
+        self.loc
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NullAST<S> {
+    pub loc: S,
+}
+impl<S: Span> Located for NullAST<S> {
+    type Span = S;
+
+    fn loc(&self) -> Self::Span {
+        self.loc
+    }
+}

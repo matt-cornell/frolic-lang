@@ -9,6 +9,18 @@ pub enum Delim {
     Brace,
     Bracket,
 }
+impl Delim {
+    pub const fn get_char(self, is_close: bool) -> char {
+        match (self, is_close) {
+            (Self::Paren, false) => '(',
+            (Self::Paren, true) => ')',
+            (Self::Brace, false) => '{',
+            (Self::Brace, true) => '}',
+            (Self::Bracket, false) => '[',
+            (Self::Bracket, true) => ']',
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Display, EnumString)]
 #[strum(serialize_all = "lowercase")]

@@ -27,4 +27,13 @@ pub enum ParseASTError<'src> {
         found_loc: Option<SourceSpan>,
         found: crate::TokenKind<'src>,
     },
+    #[error("Unmatched '{}'", .kind.get_char(!.close))]
+    UnmatchedDelimeter {
+        kind: crate::Delim,
+        close: bool,
+        #[label]
+        span: SourceSpan,
+        #[label("opened here")]
+        start: SourceSpan,
+    },
 }

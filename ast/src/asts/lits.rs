@@ -1,37 +1,27 @@
 use super::*;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct IntLitAST<'src, S> {
+pub struct IntLitAST<S> {
     pub loc: S,
     pub val: i128,
-    pub suf: Option<(Cow<'src, str>, S)>,
 }
-impl<S: Span> Located for IntLitAST<'_, S> {
+impl<S: Span> Located for IntLitAST<S> {
     type Span = S;
 
     fn loc(&self) -> Self::Span {
-        if let Some(suf) = &self.suf {
-            self.loc.merge(suf.1)
-        } else {
-            self.loc
-        }
+        self.loc
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct FloatLitAST<'src, S> {
+pub struct FloatLitAST<S> {
     pub loc: S,
     pub val: f64,
-    pub suf: Option<(Cow<'src, str>, S)>,
 }
-impl<S: Span> Located for FloatLitAST<'_, S> {
+impl<S: Span> Located for FloatLitAST<S> {
     type Span = S;
 
     fn loc(&self) -> Self::Span {
-        if let Some(suf) = &self.suf {
-            self.loc.merge(suf.1)
-        } else {
-            self.loc
-        }
+        self.loc
     }
 }
