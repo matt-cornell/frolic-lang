@@ -98,7 +98,6 @@ impl Runnable for FrolicDebugParse {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
-        use frolic_ast::prelude::*;
         use frolic_parser::prelude::*;
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
@@ -134,10 +133,20 @@ impl Runnable for FrolicDebugParse {
         };
 
         if self.expr {
-            let ast = parse_expr::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
+            let ast = parse_expr::<DebugAsts<_>, FileId, &Reporter<E>>(
+                &toks,
+                file,
+                &errs,
+                DebugAsts::new(),
+            );
             write!(stdout, "{ast:#?}")?;
         } else {
-            let ast = parse_tl::<DebugAsts, FileId, &Reporter<E>>(&toks, file, &errs, DebugAsts);
+            let ast = parse_tl::<DebugAsts<_>, FileId, &Reporter<E>>(
+                &toks,
+                file,
+                &errs,
+                DebugAsts::new(),
+            );
             write!(stdout, "{ast:#?}")?;
         }
         errs.into_inner().unwrap().into_result()?;

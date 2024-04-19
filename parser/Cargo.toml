@@ -7,14 +7,15 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+bstr.workspace = true
+frolic-ast = { version = "0.0.1", path = "../ast" }
 frolic-utils = { version = "0.1.0", path = "../utils" }
+miette.workspace = true
 rayon = { version = "1.10.0", optional = true }
+smallvec.workspace = true
 strum = { version = "0.26.2", features = ["derive", "phf"] }
 thiserror.workspace = true
-miette.workspace = true
 unicode-ident = "1.0.12"
-bstr = { version = "1.9.1", default-features = false }
-frolic-ast = { version = "0.0.1", path = "../ast" }
 
 [features]
 rayon = ["dep:rayon"]

@@ -149,6 +149,20 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                     });
                     self.index += 1;
                 }
+                '=' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Special(SpecialChar::Equals),
+                        span: (self.index + self.offset, 1).into(),
+                    });
+                    self.index += 1;
+                }
+                '.' => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Special(SpecialChar::Dot),
+                        span: (self.index + self.offset, 1).into(),
+                    });
+                    self.index += 1;
+                }
                 ':' => {
                     let (ch, len) = if self.input.get(self.index + 1) == Some(&b':') {
                         (SpecialChar::DoubleColon, 2)
@@ -164,13 +178,35 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 '+' | '-'
                     if matches!(self.input.get(self.index + 1).copied(), Some(b'0'..=b'9')) =>
                 {
-                    self.parse_num()
+                    if self.parse_num() {
+                        return;
+                    }
                 }
-                '0'..='9' => self.parse_num(),
-                '\'' => self.parse_char(),
-                '"' => self.parse_str(),
-                '#' => self.parse_comment(),
-                ch if ch.is_whitespace() => self.parse_comment(),
+                '0'..='9' => {
+                    if self.parse_num() {
+                        return;
+                    }
+                }
+                '\'' => {
+                    if self.parse_char() {
+                        return;
+                    }
+                }
+                '"' => {
+                    if self.parse_str() {
+                        return;
+                    }
+                }
+                '#' => {
+                    if self.parse_comment() {
+                        return;
+                    }
+                }
+                ch if ch.is_whitespace() => {
+                    if self.parse_comment() {
+                        return;
+                    }
+                }
                 '_' => self.parse_ident(),
                 ch if unicode_ident::is_xid_start(ch) => self.parse_ident(),
                 ch => {

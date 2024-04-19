@@ -11,10 +11,15 @@ pub enum Delim {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Display, EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub enum Keyword {
-    Def,
     Let,
+    Of,
+    As,
     If,
+    Then,
+    Else,
+    For,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,6 +35,8 @@ pub enum SpecialChar {
     Colon,
     DoubleColon,
     Backslash,
+    Equals,
+    Dot,
 }
 
 #[derive(Clone, PartialEq)]
@@ -78,6 +85,8 @@ impl Debug for TokenKind<'_> {
 }
 
 impl<'src> TokenKind<'src> {
+    pub const EMPTY_COMMENT: Self = Self::Comment(Cow::Borrowed(&[]), CommentKind::Ignore);
+
     /// Convenience method to get either a keyword or ident
     #[inline]
     pub fn from_ident(i: &'src str) -> Self {
@@ -107,5 +116,10 @@ impl<S: Span> Located for Token<'_, S> {
 
     fn loc(&self) -> Self::Span {
         self.span
+    }
+}
+impl<S: Span> From<Token<'_, S>> for miette::SourceSpan {
+    fn from(value: Token<'_, S>) -> Self {
+        value.span.into()
     }
 }

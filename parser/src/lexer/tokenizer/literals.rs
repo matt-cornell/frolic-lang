@@ -2,7 +2,7 @@ use super::*;
 use bstr::ByteSlice;
 
 impl<'src, F: Copy> Lexer<'src, '_, F> {
-    fn parse_num_impl(&mut self, start: usize, kind: LitKind, neg: bool) {
+    fn parse_num_impl(&mut self, start: usize, kind: LitKind, neg: bool) -> bool {
         if kind != LitKind::Decimal {
             self.index += 1;
         }
@@ -15,19 +15,18 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     kind: TokenKind::Int(int * mul),
                     span: ((self.offset + start)..(self.offset + self.index)).into(),
                 });
-                return;
+                return false;
             };
             self.index += 1;
             match c {
                 b'0'..=b'9' => {
                     let x = c - b'0';
                     if x >= kind as u8 {
-                        let _ = self.report(TokenizeError::InvalidCharInLit {
+                        return self.report(TokenizeError::InvalidCharInLit {
                             span: (self.offset + self.index, 1).into(),
                             found: c as _,
                             kind,
                         });
-                        return;
                     }
                     int *= base;
                     int += x as i128;
@@ -49,7 +48,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         kind: TokenKind::Int(int * mul),
                         span: ((self.offset + start)..(self.offset + self.index)).into(),
                     });
-                    return;
+                    return false;
                 }
             }
         }
@@ -64,9 +63,10 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
             kind: TokenKind::Float(float * if neg { -1.0 } else { 1.0 }),
             span: ((self.offset + start)..(self.offset + self.index)).into(),
         });
+        false
     }
 
-    pub fn parse_num(&mut self) {
+    pub fn parse_num(&mut self) -> bool {
         let start = self.index;
         let neg = match self.input[self.index] {
             b'+' => {
@@ -86,30 +86,38 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                 Some(&b'o') => self.parse_num_impl(start, LitKind::Octal, neg),
                 Some(&b'x') => self.parse_num_impl(start, LitKind::Hex, neg),
                 Some(b'0'..=b'9') => self.parse_num_impl(start, LitKind::Decimal, neg),
-                _ => self.tokens.push(Token {
-                    kind: TokenKind::Int(0),
-                    span: (self.offset + start, 1).into(),
-                }),
+                _ => {
+                    self.tokens.push(Token {
+                        kind: TokenKind::Int(0),
+                        span: (self.offset + start, 1).into(),
+                    });
+                    false
+                }
             }
         } else {
             self.parse_num_impl(start, LitKind::Decimal, neg)
         }
     }
 
-    pub fn parse_char(&mut self) {
+    pub fn parse_char(&mut self) -> bool {
         let start = self.index;
-        let Some(Ok(ch)) = self.next_char(false) else {
-            return;
+        let ch = match self.next_char(false) {
+            Some(Ok(ch)) => ch,
+            Some(Err(true)) => return true,
+            _ => return false,
         };
         if ch != '\'' {
-            return;
+            return false;
         }
-        let Some(Ok(ch)) = self.next_char(false) else {
-            let _ = self.report(TokenizeError::UnclosedCharLit {
-                span: (start + self.offset, 1).into(),
-                end: self.index + self.offset,
-            });
-            return;
+        let ch = match self.next_char(false) {
+            Some(Ok(ch)) => ch,
+            Some(Err(ret)) => return ret,
+            None => {
+                return self.report(TokenizeError::UnclosedCharLit {
+                    span: (start + self.offset, 1).into(),
+                    end: self.index + self.offset,
+                })
+            }
         };
         let val = match ch {
             '\'' => {
@@ -117,12 +125,12 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     kind: TokenKind::Char(0),
                     span: (start + self.offset, 2).into(),
                 });
-                return;
+                return false;
             }
             '\\' => {
                 if let Some(&b) = self.input.get(self.index) {
                     if self.next_char(false) == Some(Err(true)) {
-                        return;
+                        return true;
                     }
                     match b {
                         b'0' => b'\0' as u32,
@@ -131,7 +139,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         b't' => b'\t' as u32,
                         b'u' => 'unicode: {
                             match self.next_char(false) {
-                                Some(Err(true)) => return,
+                                Some(Err(true)) => return true,
                                 Some(Err(false)) => break 'unicode 0,
                                 Some(Ok('{')) => {
                                     let mut last = '}';
@@ -148,7 +156,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                         });
                                     let ch = match res {
                                         Ok(ch) => ch,
-                                        Err(true) => return,
+                                        Err(true) => return true,
                                         Err(false) => 0,
                                     };
                                     if last != '}' {
@@ -158,7 +166,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                             span: (self.index - l + self.offset, l).into(),
                                             found: last,
                                         }) {
-                                            return;
+                                            return true;
                                         } else {
                                             break 'unicode 0;
                                         }
@@ -172,17 +180,16 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                         span: (self.index - l + self.offset, l).into(),
                                         found: c,
                                     }) {
-                                        return;
+                                        return true;
                                     } else {
                                         break 'unicode 0;
                                     }
                                 }
                                 None => {
-                                    let _ = self.report(TokenizeError::UnclosedCharLit {
+                                    return self.report(TokenizeError::UnclosedCharLit {
                                         span: (start + self.offset, 1).into(),
                                         end: self.index + self.offset,
                                     });
-                                    return;
                                 }
                             }
                         }
@@ -191,46 +198,47 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 span: (self.index + self.offset - 1, 1).into(),
                                 code: b,
                             }) {
-                                return;
+                                return true;
                             } else {
                                 0
                             }
                         }
                     }
                 } else {
-                    let _ = self.report(TokenizeError::UnclosedCharLit {
+                    return self.report(TokenizeError::UnclosedCharLit {
                         span: (start + self.offset, 1).into(),
                         end: self.index + self.offset,
                     });
-                    return;
                 }
             }
             _ => ch as u32,
         };
         match self.next_char(false) {
-            Some(Err(true)) => return,
+            Some(Err(true)) => return true,
             Some(Ok('\'') | Err(false)) => {}
             Some(Ok(_)) | None => {
-                let _ = self.report(TokenizeError::UnclosedCharLit {
+                return self.report(TokenizeError::UnclosedCharLit {
                     span: (start + self.offset, 1).into(),
                     end: self.index + self.offset,
                 });
-                return;
             }
         }
         self.tokens.push(Token {
             kind: TokenKind::Char(val),
             span: ((start + self.offset)..(self.index + self.offset)).into(),
         });
+        false
     }
 
-    pub fn parse_str(&mut self) {
+    pub fn parse_str(&mut self) -> bool {
         let start = self.index;
-        let Some(Ok(ch)) = self.next_char(false) else {
-            return;
+        let ch = match self.next_char(false) {
+            Some(Ok(ch)) => ch,
+            Some(Err(true)) => return true,
+            _ => return false,
         };
         if ch != '\"' {
-            return;
+            return false;
         }
         let mut out = Cow::Borrowed(&[][..]);
         let mut last = self.index;
@@ -260,7 +268,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     b'r' => out.to_mut().push(b'\r'),
                     b't' => out.to_mut().push(b'\t'),
                     b'u' => match self.next_char(false) {
-                        Some(Err(true)) => return,
+                        Some(Err(true)) => return true,
                         Some(Err(false)) => {}
                         Some(Ok('{')) => {
                             let mut last = '}';
@@ -277,7 +285,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 });
                             let ch = match res {
                                 Ok(ch) => ch,
-                                Err(true) => return,
+                                Err(true) => return true,
                                 Err(false) => 0,
                             };
                             if last != '}' {
@@ -287,7 +295,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                     span: (self.index - l + self.offset, l).into(),
                                     found: last,
                                 }) {
-                                    return;
+                                    return true;
                                 }
                             }
                             out.to_mut()
@@ -300,7 +308,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                                 span: (self.index - l + self.offset, l).into(),
                                 found: c,
                             }) {
-                                return;
+                                return true;
                             }
                         }
                         None => continue,
@@ -310,7 +318,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                             span: (self.index + self.offset - 1, 1).into(),
                             code: b,
                         }) {
-                            return;
+                            return true;
                         }
                     }
                 }
@@ -320,16 +328,16 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                     kind: TokenKind::String(out),
                     span: ((start + self.offset)..(self.index + self.offset)).into(),
                 });
-                let _ = self.report(TokenizeError::UnclosedStrLit {
+                return self.report(TokenizeError::UnclosedStrLit {
                     span: (start + self.offset, 1).into(),
                     end: self.index + self.offset,
                 });
-                return;
             }
         }
         self.tokens.push(Token {
             kind: TokenKind::String(out),
             span: ((start + self.offset)..(self.index + self.offset)).into(),
         });
+        false
     }
 }

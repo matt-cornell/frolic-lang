@@ -1,4 +1,8 @@
-pub trait Span: Copy {
+use miette::SourceSpan;
+use std::rc::Rc;
+use std::sync::Arc;
+
+pub trait Span: Copy + Into<SourceSpan> {
     fn merge(self, other: Self) -> Self;
 
     fn offset(self) -> usize;
@@ -23,21 +27,30 @@ impl Span for miette::SourceSpan {
     }
 }
 
-impl<F: Copy, S: Span> Span for (F, S) {
-    fn merge(self, other: Self) -> Self {
-        (self.0, self.1.merge(other.1))
-    }
-    fn offset(self) -> usize {
-        self.1.offset()
-    }
-    fn len(self) -> usize {
-        self.1.len()
-    }
-}
-
 /// Something with a location
 pub trait Located {
     type Span: Span;
 
     fn loc(&self) -> Self::Span;
+}
+impl<T: Located + ?Sized> Located for Box<T> {
+    type Span = T::Span;
+
+    fn loc(&self) -> Self::Span {
+        T::loc(self)
+    }
+}
+impl<T: Located + ?Sized> Located for Rc<T> {
+    type Span = T::Span;
+
+    fn loc(&self) -> Self::Span {
+        T::loc(self)
+    }
+}
+impl<T: Located + ?Sized> Located for Arc<T> {
+    type Span = T::Span;
+
+    fn loc(&self) -> Self::Span {
+        T::loc(self)
+    }
 }

@@ -31,22 +31,24 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                 let comment = std::mem::replace(comment, Cow::Borrowed(&[]));
                 self.tokens.push(Token {
                     kind: TokenKind::Comment(comment, *kind),
-                    span: ((*start + self.offset - usize::from(this != CommentKind::Ignore))
-                        ..(*end + self.offset))
-                        .into(),
+                    span: ((*start + self.offset)..(*end + self.offset)).into(),
                 });
             }
         }
-        *data = Some((start, self.index, this));
+        *data = Some((
+            start - usize::from(this != CommentKind::Ignore) - 1,
+            self.index,
+            this,
+        ));
         *comment = slice.into();
     }
 
-    pub fn parse_comment(&mut self) {
+    pub fn parse_comment(&mut self) -> bool {
         let mut comment = Cow::Borrowed(&[][..]);
         let mut data = None;
         while let Some(ch) = self.next_char(false) {
             match ch {
-                Ok('#') => match self.input.get(self.index + 1) {
+                Ok('#') => match self.input.get(self.index) {
                     Some(&b'#') => {
                         self.index += 1;
                         self.eat_comment(CommentKind::OuterDoc, &mut data, &mut comment);
@@ -56,43 +58,48 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                         self.eat_comment(CommentKind::InnerDoc, &mut data, &mut comment);
                     }
                     Some(&b'=') => {
-                        let start = self.index;
-                        let len = self.input[(start + 1)..]
+                        let start = self.index - 1;
+                        let len = self.input[(start + 2)..]
                             .iter()
                             .position(|&c| c != b'=')
-                            .unwrap_or(self.input.len() - start);
-                        self.index += len;
+                            .unwrap_or(self.input.len() - start - 2);
+                        self.index += len + 1;
+                        let slice_begin = self.index;
 
                         let mut remaining = &self.input[self.index..];
 
-                        let valid = loop {
+                        let slice_end = loop {
                             let Some(found) = remaining.iter().position(|&c| c == b'=') else {
-                                break false;
+                                break None;
                             };
                             remaining = &remaining[found..];
                             self.index += found;
                             let Some(count) = remaining.iter().position(|&c| c != b'=') else {
-                                break false;
+                                break None;
                             };
                             remaining = &remaining[count..];
+                            let slice_end = self.index;
                             self.index += count;
                             if count < len {
                                 continue;
                             }
                             if remaining[0] == b'#' {
                                 self.index += 1;
-                                break true;
+                                break Some(slice_end);
                             }
                         };
-                        if !valid
-                            && self.report(TokenizeError::UnclosedMultiline {
+                        let slice_end = if let Some(e) = slice_end {
+                            e
+                        } else {
+                            if self.report(TokenizeError::UnclosedMultiline {
                                 span: (start + self.offset, len + 1).into(),
                                 end: self.input.len() + self.offset,
-                            })
-                        {
-                            return;
-                        }
-                        let slice = &self.input[start..self.index];
+                            }) {
+                                return true;
+                            }
+                            self.index
+                        };
+                        let slice = &self.input[slice_begin..slice_end];
                         'blk: {
                             if let Some((start, end, kind)) = data {
                                 if kind == CommentKind::Ignore {
@@ -127,7 +134,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                 }
                 Err(ret) => {
                     if ret {
-                        return;
+                        return true;
                     }
                 }
             }
@@ -140,6 +147,7 @@ impl<'src, F: Copy> Lexer<'src, '_, F> {
                 });
             }
         }
+        false
     }
 
     pub fn parse_ident(&mut self) {
