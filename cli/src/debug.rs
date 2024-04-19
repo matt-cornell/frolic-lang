@@ -46,18 +46,17 @@ impl Runnable for FrolicDebugLex {
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
 
-        let errs = DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new());
-        let errs = Mutex::new(errs);
+        let errs = Mutex::new(DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new()));
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        let toks = match self.source {
+        let toks: Vec<Token<SourceSpan>> = match self.source {
             Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
-                let toks = tokenize::<_, FileId, SourceSpan, &Reporter<E>>(file.contents(), file, &errs);
+                let toks = tokenize::<_, _, _, &Reporter<E>>(file.contents(), file, &errs);
                 toks
             }
             Source {
@@ -70,7 +69,7 @@ impl Runnable for FrolicDebugLex {
                     path.into_os_string().to_string_lossy(),
                     code,
                 );
-                let toks = tokenize::<_, FileId, SourceSpan, &Reporter<E>>(file.contents(), file, &errs);
+                let toks = tokenize::<_, _, _, &Reporter<E>>(file.contents(), file, &errs);
                 toks
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
@@ -103,18 +102,17 @@ impl Runnable for FrolicDebugParse {
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
 
-        let errs = DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new());
-        let errs = Mutex::new(errs);
+        let errs = Mutex::new(DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new()));
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
-        let (file, toks) = match self.source {
+        let (file, toks): (_, Vec<Token<SourceSpan>>) = match self.source {
             Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
-                let toks = tokenize::<_, FileId, SourceSpan, &Reporter<E>>(file.contents(), file, &errs);
+                let toks = tokenize::<_, _, _, &Reporter<E>>(file.contents(), file, &errs);
                 (file, toks)
             }
             Source {
@@ -127,14 +125,14 @@ impl Runnable for FrolicDebugParse {
                     path.into_os_string().to_string_lossy(),
                     code,
                 );
-                let toks = tokenize::<_, FileId, SourceSpan, &Reporter<E>>(file.contents(), file, &errs);
+                let toks = tokenize::<_, _, _, &Reporter<E>>(file.contents(), file, &errs);
                 (file, toks)
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
         if self.expr {
-            let ast = parse_expr::<DebugAsts<_>, FileId, _, &Reporter<E>>(
+            let ast = parse_expr(
                 &toks,
                 file,
                 &errs,
@@ -142,7 +140,7 @@ impl Runnable for FrolicDebugParse {
             );
             write!(stdout, "{ast:#?}")?;
         } else {
-            let ast = parse_tl::<DebugAsts<_>, FileId, _, &Reporter<E>>(
+            let ast = parse_tl(
                 &toks,
                 file,
                 &errs,
