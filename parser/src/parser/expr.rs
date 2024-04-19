@@ -1,14 +1,14 @@
 use super::*;
 
-impl<'src, A: AstDefs, F: Copy> Parser<'src, '_, A, F>
+impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = SourceSpan>,
-    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    A::AstBox<'src>: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
@@ -20,7 +20,7 @@ where
     ) -> (A::AstBox<'src>, bool) {
         if self.eat_comment(out) {
             return (A::make_box(asts::ErrorAST {
-                loc: self.curr_loc().into(),
+                loc: self.curr_loc(),
             }), true);
         }
         self.parse_atom(out)
@@ -108,7 +108,7 @@ where
                             kind: Delim::Paren,
                             start,
                             close: false,
-                            span: self.curr_loc().into(),
+                            span: self.curr_loc(),
                         };
                         (
                             A::make_box(asts::ParenAST {
@@ -120,7 +120,7 @@ where
                     }
                 }
                 None => {
-                    let span = self.curr_loc().into();
+                    let span = self.curr_loc();
                     let err = ParseASTError::UnmatchedDelimeter {
                         kind: Delim::Paren,
                         start,
@@ -132,7 +132,7 @@ where
             },
             _ => {
                 let err = self.exp_found("an expression");
-                (A::make_box(asts::ErrorAST {loc: self.curr_loc().into()}), self.report(err))
+                (A::make_box(asts::ErrorAST {loc: self.curr_loc()}), self.report(err))
             }
         }
     }

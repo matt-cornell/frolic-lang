@@ -25,58 +25,58 @@ pub enum LitKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
-pub enum TokenizeError {
+pub enum TokenizeError<S: Span> {
     #[error("unexpected char: {found:?}")]
     UnexpectedChar {
         #[label]
-        span: SourceSpan,
+        span: S,
         found: char,
     },
     #[error("invalid character {found:?} in {kind} literal")]
     InvalidCharInLit {
         #[label]
-        span: SourceSpan,
+        span: S,
         found: char,
         kind: LitKind,
     },
     #[error("invalid UTF-8 byte: 0x{byte:0>2x}")]
     InvalidUTF8 {
         #[label]
-        span: SourceSpan,
+        span: S,
         byte: u8,
     },
     #[error("unclosed multiline comment")]
     UnclosedMultiline {
         #[label("opened here")]
-        span: SourceSpan,
+        span: S,
         #[label]
         end: usize,
     },
     #[error("unclosed character literal")]
     UnclosedCharLit {
         #[label("started here")]
-        span: SourceSpan,
+        span: S,
         #[label]
         end: usize,
     },
     #[error("unclosed string literal")]
     UnclosedStrLit {
         #[label("started here")]
-        span: SourceSpan,
+        span: S,
         #[label]
         end: usize,
     },
     #[error("unknown escape code '\\{}'", PrettyByte(*.code))]
     UnknownEscapeCode {
         #[label]
-        span: SourceSpan,
+        span: S,
         code: u8,
     },
     #[error("expected {} brace in unicode escape code", if *.close {"closing"} else {"opening"})]
     ExpectedUnicodeBrace {
         close: bool,
         #[label("found {found:?}")]
-        span: SourceSpan,
+        span: S,
         found: char,
     },
 }

@@ -2,7 +2,6 @@
 
 use frolic_utils::prelude::*;
 use lexer::tokens::*;
-use miette::SourceSpan;
 use par::dispatch_chunks;
 
 pub mod lexer;

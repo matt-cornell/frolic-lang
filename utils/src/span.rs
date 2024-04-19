@@ -1,14 +1,25 @@
 use miette::SourceSpan;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::fmt::Debug;
 
-pub trait Span: Copy + Into<SourceSpan> {
+pub trait Span: Copy + Debug + Into<SourceSpan> + 'static {
     fn merge(self, other: Self) -> Self;
 
     fn offset(self) -> usize;
     fn len(self) -> usize;
     fn is_empty(self) -> bool {
         self.len() == 0
+    }
+}
+
+pub trait SpanConstruct: Span {
+    fn new(offset: usize, len: usize) -> Self;
+    fn range(start: usize, end: usize) -> Self {
+        Self::new(start, end - start)
+    }
+    fn loc(offset: usize) -> Self {
+        Self::new(offset, 0)
     }
 }
 
@@ -24,6 +35,11 @@ impl Span for miette::SourceSpan {
     }
     fn len(self) -> usize {
         miette::SourceSpan::len(&self)
+    }
+}
+impl SpanConstruct for miette::SourceSpan {
+    fn new(offset: usize, len: usize) -> Self {
+        (offset, len).into()
     }
 }
 

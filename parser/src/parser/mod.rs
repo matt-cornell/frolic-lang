@@ -10,30 +10,30 @@ mod expr;
 pub mod traits;
 
 /// Bundle of common state for parser
-struct Parser<'src, 'a, A, F> {
-    input: &'a [Token<'src, SourceSpan>],
+struct Parser<'src, 'a, A, F, S: Span> {
+    input: &'a [Token<'src, S>],
     index: usize,
     file: F,
-    errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src>>>,
+    errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
     _asts: PhantomData<A>,
 }
-impl<'src, 'a, A: AstDefs, F: Copy> Parser<'src, 'a, A, F>
+impl<'src, 'a, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = SourceSpan>,
-    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    A::AstBox<'src>: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     /// Create a new parser
     pub fn new(
-        input: &'a [Token<'src, SourceSpan>],
+        input: &'a [Token<'src, S>],
         file: F,
-        errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src>>>,
+        errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
     ) -> Self {
         Self {
             input,
@@ -45,15 +45,15 @@ where
     }
 
     /// Report an error to the reporter
-    fn report(&mut self, err: ParseASTError<'src>) -> bool {
+    fn report(&mut self, err: ParseASTError<'src, S>) -> bool {
         self.errs.report(SourcedError {
             file: self.file,
             error: err,
         })
     }
 
-    fn exp_found(&self, ex: &'static str) -> ParseASTError<'src> {
-        let span = self.curr_loc().into();
+    fn exp_found(&self, ex: &'static str) -> ParseASTError<'src, S> {
+        let span = self.curr_loc();
         let tok = self.current_token();
         ParseASTError::ExpectedFound {
             ex,
@@ -64,31 +64,30 @@ where
     }
 
     #[inline]
-    fn current_token(&self) -> Option<&Token<'src, SourceSpan>> {
+    fn current_token(&self) -> Option<&Token<'src, S>> {
         self.input.get(self.index)
     }
 
-    fn curr_span(&self) -> SourceSpan {
+    fn curr_span(&self) -> S {
         self.input.get(self.index).map_or_else(
             || {
-                self.input
+                S::loc(self.input
                     .last()
-                    .map_or(0, |t| t.span.offset() + t.span.len())
-                    .into()
+                    .map_or(0, |t| t.span.offset() + t.span.len()))
             },
             |t| t.span,
         )
     }
 
-    fn curr_loc(&self) -> usize {
-        self.input.get(self.index).map_or_else(
+    fn curr_loc(&self) -> S {
+        S::loc(self.input.get(self.index).map_or_else(
             || {
                 self.input
                     .last()
                     .map_or(0, |t| t.span.offset() + t.span.len())
             },
             |t| t.span.offset(),
-        )
+        ))
     }
 
     fn eat_comment(&mut self, out: &mut Vec<A::AstBox<'src>>) -> bool {
@@ -147,7 +146,7 @@ where
         &mut self,
         necessary: bool,
         out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<(&'src str, SourceSpan)>, bool) {
+    ) -> (Option<(&'src str, S)>, bool) {
         match self.current_token() {
             Some(&Token {
                 kind: TokenKind::Ident(i),
@@ -226,45 +225,46 @@ pub fn parse_expr<
     'src,
     A: AstDefs,
     F: Copy,
-    E: ErrorReporter<SourcedError<F, ParseASTError<'src>>>,
+    S: SpanConstruct,
+    E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
 >(
-    input: &[Token<'src, SourceSpan>],
+    input: &[Token<'src, S>],
     file: F,
     mut errs: E,
     _defs: A,
 ) -> A::AstBox<'src>
 where
-    A::AstBox<'src>: Located<Span = SourceSpan>,
-    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    A::AstBox<'src>: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
-    let mut parser = Parser::<'src, '_, A, F>::new(input, file, &mut errs);
+    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     parser.parse_expr(false, &mut vec![]).0
 }
-pub fn parse_tl<'src, A: AstDefs, F: Copy, E: ErrorReporter<SourcedError<F, ParseASTError<'src>>>>(
-    input: &[Token<'src, SourceSpan>],
+pub fn parse_tl<'src, A: AstDefs, F: Copy, S: SpanConstruct, E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>>(
+    input: &[Token<'src, S>],
     file: F,
     mut errs: E,
     _defs: A,
 ) -> asts::FrolicAST<A::AstBox<'src>, F>
 where
-    A::AstBox<'src>: Located<Span = SourceSpan>,
-    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    A::AstBox<'src>: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
-    let mut parser = Parser::<'src, '_, A, F>::new(input, file, &mut errs);
+    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     let nodes = parser.parse_top_level();
     asts::FrolicAST { file, nodes }
 }

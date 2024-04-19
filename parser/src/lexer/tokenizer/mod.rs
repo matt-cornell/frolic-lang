@@ -3,22 +3,22 @@ use super::*;
 mod literals;
 mod misc;
 
-struct Lexer<'src, 'e, F> {
+struct Lexer<'src, 'e, F, S: Span> {
     input: &'src [u8],
     index: usize,
     file: F,
     offset: usize,
-    tokens: Vec<Token<'src, SourceSpan>>,
-    errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError>>,
+    tokens: Vec<Token<'src, S>>,
+    errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 }
 
-impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
+impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
     #[inline]
     pub fn new(
         input: &'src [u8],
         offset: usize,
         file: F,
-        errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError>>,
+        errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError<S>>>,
     ) -> Self {
         Self {
             input,
@@ -29,6 +29,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
             tokens: vec![],
         }
     }
+
     fn next_char(&mut self, peek: bool) -> Option<Result<char, bool>> {
         let b = *self.input.get(self.index)?;
         let (res, incr) = match b.leading_ones() {
@@ -108,14 +109,14 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
 
         Some(res.map_err(|(byte, off)| {
             self.report(TokenizeError::InvalidUTF8 {
-                span: (self.offset + off, 1).into(),
+                span: S::new(self.offset + off, 1),
                 byte,
             })
         }))
     }
 
     #[inline]
-    fn report(&mut self, err: TokenizeError) -> bool {
+    fn report(&mut self, err: TokenizeError<S>) -> bool {
         self.errs.report(SourcedError {
             error: err,
             file: self.file,
@@ -138,28 +139,28 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 '\\' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Special(SpecialChar::Backslash),
-                        span: (self.index + self.offset, 1).into(),
+                        span: S::new(self.index + self.offset, 1),
                     });
                     self.index += 1;
                 }
                 ';' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Special(SpecialChar::Semicolon),
-                        span: (self.index + self.offset, 1).into(),
+                        span: S::new(self.index + self.offset, 1),
                     });
                     self.index += 1;
                 }
                 '=' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Special(SpecialChar::Equals),
-                        span: (self.index + self.offset, 1).into(),
+                        span: S::new(self.index + self.offset, 1),
                     });
                     self.index += 1;
                 }
                 '.' => {
                     self.tokens.push(Token {
                         kind: TokenKind::Special(SpecialChar::Dot),
-                        span: (self.index + self.offset, 1).into(),
+                        span: S::new(self.index + self.offset, 1),
                     });
                     self.index += 1;
                 }
@@ -171,7 +172,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                     };
                     self.tokens.push(Token {
                         kind: TokenKind::Special(ch),
-                        span: (self.index + self.offset, len).into(),
+                        span: S::new(self.index + self.offset, len),
                     });
                     self.index += len;
                 }
@@ -211,7 +212,7 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
                 ch if unicode_ident::is_xid_start(ch) => self.parse_ident(),
                 ch => {
                     if self.report(TokenizeError::UnexpectedChar {
-                        span: (self.offset + self.index, 1).into(),
+                        span: S::new(self.offset + self.index, 1),
                         found: ch,
                     }) {
                         return;
@@ -224,13 +225,13 @@ impl<'src, 'e, F: Copy> Lexer<'src, 'e, F> {
 }
 
 #[cfg(feature = "rayon")]
-fn tokenize_impl<'src, F: Copy + Send + Sync, E: Sync>(
+fn tokenize_impl<'src, F: Copy + Send + Sync, S: SpanConstruct + Send, E: Sync>(
     input: &'src [u8],
     file: F,
     errs: E,
-) -> Vec<Token<'src, SourceSpan>>
+) -> Vec<Token<'src, S>>
 where
-    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError>>,
+    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 {
     const STARTS: &[u8] = b"\n\t !$%&(),.:;@~";
     dispatch_chunks(
@@ -253,25 +254,26 @@ where
 
 #[cfg(feature = "rayon")]
 #[inline(never)]
-pub fn tokenize<'src, S: AsRef<[u8]> + ?Sized, F: Copy + Send + Sync, E: Sync>(
-    input: &'src S,
+pub fn tokenize<'src, I: AsRef<[u8]> + ?Sized, F: Copy + Send + Sync, S: SpanConstruct + Send, E: Sync>(
+    input: &'src I,
     file: F,
     errs: E,
-) -> Vec<Token<'src, SourceSpan>>
+) -> Vec<Token<'src, S>>
 where
-    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError>>,
+    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 {
-    tokenize_impl::<F, E>(input.as_ref(), file, errs)
+    tokenize_impl::<F, S, E>(input.as_ref(), file, errs)
 }
 
 #[cfg(not(feature = "rayon"))]
 pub fn tokenize<
     'src,
-    S: AsRef<[u8]> + ?Sized,
-    F,
-    E: ErrorReporter<SourcedError<F, TokenizeError>>,
+    I: AsRef<[u8]> + ?Sized,
+    F: Copy,
+    S: SpanConstruct,
+    E: ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 >(
-    input: &'src S,
+    input: &'src I,
     file: F,
     errs: E,
 ) -> Vec<Token<'src, SourceSpan>> {

@@ -1,26 +1,26 @@
 use super::*;
 use smallvec::smallvec;
 
-impl<'src, A: AstDefs, F: Copy> Parser<'src, '_, A, F>
+impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = SourceSpan>,
-    asts::ErrorAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<SourceSpan>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, SourceSpan>: Unsize<A::AstTrait<'src>>,
+    A::AstBox<'src>: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     fn parse_dottedname(
         &mut self,
         out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<DottedName<'src, SourceSpan>>, bool) {
+    ) -> (Option<DottedName<'src, S>>, bool) {
         if self.eat_comment(out) {
             return (None, true);
         }
-        let global = if let Some(Token {
+        let global: Option<S> = if let Some(Token {
             kind: TokenKind::Special(SpecialChar::Dot),
             span,
         }) = self.input.get(self.index)
@@ -33,18 +33,18 @@ where
         } else {
             None
         };
-        let mut segs = Vec::new();
+        let mut segs = Vec::<(_, S)>::new();
         {
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
-                (Some(seg), true) => return (Some(DottedName::new(global, vec![seg])), true),
+                (Some(seg), true) => return (Some(DottedName::<S>::new(global, vec![seg])), true),
                 (None, false) => return (None, false),
                 (None, true) => return (None, true),
             }
         }
         loop {
             if self.eat_comment(out) {
-                return (Some(DottedName::new(global, segs)), true);
+                return (Some(DottedName::<S>::new(global, segs)), true);
             }
             if !matches!(
                 self.input.get(self.index),
@@ -53,17 +53,17 @@ where
                     ..
                 })
             ) {
-                return (Some(DottedName::new(global, segs)), false);
+                return (Some(DottedName::<S>::new(global, segs)), false);
             }
             self.index += 1;
             if self.eat_comment(out) {
-                return (Some(DottedName::new(global, segs)), true);
+                return (Some(DottedName::<S>::new(global, segs)), true);
             }
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
                 (seg, ret) => {
                     segs.extend(seg);
-                    return (Some(DottedName::new(global, segs)), ret);
+                    return (Some(DottedName::<S>::new(global, segs)), ret);
                 }
             }
         }
@@ -86,7 +86,7 @@ where
                             params: smallvec![],
                             ret: None,
                             body: A::make_box(asts::ErrorAST {
-                                loc: self.curr_loc().into(),
+                                loc: self.curr_loc(),
                             }),
                         }),
                         true,
@@ -107,7 +107,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -132,7 +132,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -148,7 +148,7 @@ where
                                         params,
                                         ret: None,
                                         body: A::make_box(asts::ErrorAST {
-                                            loc: self.curr_loc().into(),
+                                            loc: self.curr_loc(),
                                         }),
                                     }),
                                     true,
@@ -167,7 +167,7 @@ where
                                 match next {
                                     Some((n, 0)) => {
                                         self.index += n;
-                                        ("<error>", self.curr_loc().into())
+                                        ("<error>", self.curr_loc())
                                     }
                                     Some((n, 1)) => {
                                         self.index += n;
@@ -189,7 +189,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -211,7 +211,7 @@ where
                                     params,
                                     ret: None,
                                     body: A::make_box(asts::ErrorAST {
-                                        loc: self.curr_loc().into(),
+                                        loc: self.curr_loc(),
                                     }),
                                 }),
                                 true,
@@ -249,7 +249,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -269,7 +269,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -283,7 +283,7 @@ where
                                 params,
                                 ret: None,
                                 body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc().into(),
+                                    loc: self.curr_loc(),
                                 }),
                             }),
                             true,
@@ -305,7 +305,7 @@ where
                                     params,
                                     ret: None,
                                     body: A::make_box(asts::ErrorAST {
-                                        loc: self.curr_loc().into(),
+                                        loc: self.curr_loc(),
                                     }),
                                 }),
                                 true,
@@ -352,7 +352,7 @@ where
                         params,
                         ret: None,
                         body: A::make_box(asts::ErrorAST {
-                            loc: self.curr_loc().into(),
+                            loc: self.curr_loc(),
                         }),
                     }),
                     true,
@@ -369,7 +369,7 @@ where
                 ..
             })
         ) {
-            let loc = self.curr_loc().into();
+            let loc = self.curr_loc();
             return (
                 Some(asts::LetAST {
                     kw,
