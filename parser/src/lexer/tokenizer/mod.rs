@@ -2,6 +2,7 @@ use super::*;
 
 mod literals;
 mod misc;
+mod op;
 
 struct Lexer<'src, 'e, F, S: Span> {
     input: &'src [u8],
@@ -124,6 +125,17 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
     }
 
     fn tokenize(&mut self) {
+        macro_rules! single_char {
+            ($tok:expr) => {
+                {
+                    self.tokens.push(Token {
+                        kind: $tok,
+                        span: S::new(self.index + self.offset, 1),
+                    });
+                    self.index += 1;
+                }
+            }
+        }
         while let Some(ch) = self.next_char(true) {
             let ch = match ch {
                 Ok(ch) => ch,
@@ -136,34 +148,16 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 }
             };
             match ch {
-                '\\' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Special(SpecialChar::Backslash),
-                        span: S::new(self.index + self.offset, 1),
-                    });
-                    self.index += 1;
-                }
-                ';' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Special(SpecialChar::Semicolon),
-                        span: S::new(self.index + self.offset, 1),
-                    });
-                    self.index += 1;
-                }
-                '=' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Special(SpecialChar::Equals),
-                        span: S::new(self.index + self.offset, 1),
-                    });
-                    self.index += 1;
-                }
-                '.' => {
-                    self.tokens.push(Token {
-                        kind: TokenKind::Special(SpecialChar::Dot),
-                        span: S::new(self.index + self.offset, 1),
-                    });
-                    self.index += 1;
-                }
+                '\\' => single_char!(TokenKind::Special(SpecialChar::Backslash)),
+                ';' => single_char!(TokenKind::Special(SpecialChar::Semicolon)),
+                '=' => single_char!(TokenKind::Special(SpecialChar::Equals)),
+                '.' => single_char!(TokenKind::Special(SpecialChar::Dot)),
+                '(' => single_char!(TokenKind::Open(Delim::Paren)),
+                ')' => single_char!(TokenKind::Close(Delim::Paren)),
+                '{' => single_char!(TokenKind::Open(Delim::Brace)),
+                '}' => single_char!(TokenKind::Close(Delim::Brace)),
+                '[' => single_char!(TokenKind::Open(Delim::Bracket)),
+                ']' => single_char!(TokenKind::Close(Delim::Bracket)),
                 ':' => {
                     let (ch, len) = if self.input.get(self.index + 1) == Some(&b':') {
                         (SpecialChar::DoubleColon, 2)
@@ -176,13 +170,26 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                     });
                     self.index += len;
                 }
-                '+' | '-'
-                    if matches!(self.input.get(self.index + 1).copied(), Some(b'0'..=b'9')) =>
-                {
-                    if self.parse_num() {
-                        return;
+                '+' | '-' => {
+                    match self.input.get(self.index + 1).copied() {
+                        Some(b'0'..=b'9') => {
+                            if self.parse_num() {
+                                return;
+                            }
+                        }
+                        Some(b'$' | b'&' | b'*' | b'%' | b'+' | b'-' | b'/' | b'=' | b'<' | b'>' | b'@' | b'^' | b'|') => self.parse_inf_op(),
+                        _ => single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'+' {AmbigOp::Plus} else {AmbigOp::Minus}))
                     }
                 }
+                '*' | '&' => {
+                    if self.input.get(self.index + 1).map_or(false, |c| b"".contains(c)) {
+                        self.parse_inf_op();
+                    } else {
+                        single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'*' {AmbigOp::Star} else {AmbigOp::And}))
+                    }
+                }
+                '$' | '<' | '>' | '@' | '^' | '|' | '%' => self.parse_inf_op(),
+                '?' | '~' | '!' => self.parse_pre_op(),
                 '0'..='9' => {
                     if self.parse_num() {
                         return;

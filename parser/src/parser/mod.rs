@@ -5,7 +5,7 @@ use std::marker::{PhantomData, Unsize};
 use traits::*;
 
 mod decl;
-mod error;
+pub mod error;
 mod expr;
 pub mod traits;
 
@@ -160,7 +160,47 @@ where
                 span: start,
             }) => {
                 self.index += 1;
-                todo!()
+                if self.eat_comment(out) {
+                    return (None, true);
+                }
+                let (id, mspan) = match self.current_token() {
+                    Some(&Token {kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::Ident(op), span}) => (op, span),
+                    Some(&Token {kind: TokenKind::AmbigOp(op), span}) => (op.as_str(), span),
+                    Some(&Token {kind: TokenKind::Keyword(kw), span}) => (kw.as_str(), span),
+                    _ => {
+                        if necessary {
+                            let tok = self.current_token().cloned();
+                            let span = self.curr_span();
+                            self.index += 1;
+                            return (
+                                None,
+                                self.report(ParseASTError::ExpectedFound {
+                                    ex: "an identifier",
+                                    span,
+                                    found_loc: tok.as_ref().map(|t| t.span),
+                                    found: tok
+                                        .map_or(TokenKind::Comment(b"".into(), CommentKind::Ignore), |t| {
+                                            t.kind
+                                        }),
+                                }),
+                            )
+                        } else {
+                            self.index -= 1;
+                            return (None, false)
+                        }
+                    }
+                };
+                self.index += 1;
+                if self.eat_comment(out) {
+                    return (Some((id, start.merge(mspan))), true);
+                }
+                if let Some(&Token {kind: TokenKind::Close(Delim::Paren), span: end}) = self.current_token() {
+                    self.index += 1;
+                    (Some((id, start.merge(end))), false)
+                } else {
+                    let err = self.exp_found("')'");
+                    (Some((id, start.merge(mspan))), self.report(err))
+                }
             }
             _ => {
                 if necessary {
@@ -199,18 +239,33 @@ where
                     if let Some(res) = res {
                         out.push(A::make_box(res));
                     }
+                    if matches!(self.current_token(), Some(Token {kind: TokenKind::Special(SpecialChar::Semicolon), ..})) {self.index += 1} else {
+                        let err = self.exp_found("';' after let-declaration");
+                        if self.report(err) {
+                            return (out, true);
+                        }
+                        let Some(next) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon)) else {
+                            return (out, false);
+                        };
+                        self.index += next;
+                    }
                 }
                 TokenKind::Comment(..) => {
                     if self.eat_comment(&mut out) {
                         return (out, true);
                     }
                 }
+                TokenKind::Special(SpecialChar::Semicolon) => self.index += 1,
                 _ => {
                     self.index += 1;
                     let ret = self.report(ParseASTError::InvalidTlExpression { span: tok.span });
                     if ret {
                         return (out, true);
                     }
+                    let Some(next) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon)) else {
+                        return (out, false);
+                    };
+                    self.index += next;
                 }
             }
         }

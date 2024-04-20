@@ -22,7 +22,7 @@ impl Delim {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Display, EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr, EnumString)]
 #[strum(serialize_all = "lowercase")]
 pub enum Keyword {
     Let,
@@ -32,6 +32,11 @@ pub enum Keyword {
     Then,
     Else,
     For,
+}
+impl Keyword {
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -51,6 +56,24 @@ pub enum SpecialChar {
     Dot,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr, FromRepr)]
+#[repr(u8)]
+pub enum AmbigOp {
+    #[strum(serialize = "+")]
+    Plus = b'+',
+    #[strum(serialize = "-")]
+    Minus = b'-',
+    #[strum(serialize = "*")]
+    Star = b'*',
+    #[strum(serialize = "&")]
+    And = b'&',
+}
+impl AmbigOp {
+    pub fn as_str(self) -> &'static str {
+        self.into()
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub enum TokenKind<'src> {
     Comment(Cow<'src, [u8]>, CommentKind),
@@ -63,6 +86,9 @@ pub enum TokenKind<'src> {
     Char(u32),
     String(Cow<'src, [u8]>),
     Special(SpecialChar),
+    PreOp(&'src str),
+    InfOp(&'src str),
+    AmbigOp(AmbigOp),
 }
 impl Debug for TokenKind<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -92,6 +118,9 @@ impl Debug for TokenKind<'_> {
                 .field(&bstr::BStr::new(val))
                 .finish(),
             Self::Special(sc) => f.debug_tuple("Special").field(sc).finish(),
+            Self::PreOp(op) => f.debug_tuple("PreOp").field(op).finish(),
+            Self::InfOp(op) => f.debug_tuple("InfOp").field(op).finish(),
+            Self::AmbigOp(ch) => f.debug_tuple("AmbigOp").field(&(*ch as u8 as char)).finish(),
         }
     }
 }
