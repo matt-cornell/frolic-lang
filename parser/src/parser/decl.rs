@@ -334,6 +334,7 @@ where
                             _ => break 'params,
                         }
                     }
+                    self.index += 1;
                 }
                 _ => break,
             }
@@ -371,6 +372,7 @@ where
             })
         ) {
             let loc = self.curr_loc();
+            let err = self.exp_found("value for let-binding");
             return (
                 Some(asts::LetAST {
                     kw,
@@ -379,11 +381,7 @@ where
                     ret,
                     body: A::make_box(asts::ErrorAST { loc }),
                 }),
-                self.report(ParseASTError::ExpectedFound {
-                    ex: "value for let-binding",
-                    span: loc,
-                    found: None,
-                }),
+                self.report(err),
             );
         }
         self.index += 1;
