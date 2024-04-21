@@ -1,7 +1,7 @@
 use miette::SourceSpan;
+use std::fmt::{self, Debug, Formatter};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::fmt::{self, Debug, Formatter};
 
 /// Like a `SourceSpan`, but with a nicer `Debug`
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -28,7 +28,7 @@ impl Span for PrettySpan {
             len: end - start,
         }
     }
-    
+
     fn offset(self) -> usize {
         self.offset
     }
@@ -38,9 +38,7 @@ impl Span for PrettySpan {
 }
 impl SpanConstruct for PrettySpan {
     fn new(offset: usize, len: usize) -> Self {
-        Self {
-            offset, len
-        }
+        Self { offset, len }
     }
 }
 
@@ -74,10 +72,7 @@ impl Span for miette::SourceSpan {
     fn merge(self, other: Self) -> Self {
         let start = std::cmp::min(self.offset(), other.offset());
         let end = std::cmp::max(self.offset() + self.len(), other.offset() + other.len());
-        miette::SourceSpan::new(
-            start.into(),
-            end - start,
-        )
+        miette::SourceSpan::new(start.into(), end - start)
     }
     fn offset(self) -> usize {
         miette::SourceSpan::offset(&self)

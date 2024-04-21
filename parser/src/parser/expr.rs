@@ -1,6 +1,30 @@
 use super::*;
 use smallvec::SmallVec;
 
+fn matches_prec(op: &TokenKind, lvl: u8) -> bool {
+    match op {
+        TokenKind::PreOp(_) => lvl == 1,
+        TokenKind::AmbigOp(AmbigOp::Plus | AmbigOp::Minus) => lvl == 1 || lvl == 5,
+        TokenKind::AmbigOp(AmbigOp::And) => lvl == 1 || lvl == 7,
+        TokenKind::AmbigOp(AmbigOp::Star) => lvl == 1 || lvl == 4,
+        TokenKind::InfOp("&&") => lvl == 9,
+        TokenKind::InfOp("||") => lvl == 10,
+        TokenKind::InfOp(op) => op
+            .as_bytes()
+            .first()
+            .and_then(|ch| match ch {
+                b'*' | b'/' | b'%' => Some(4),
+                b'+' | b'-' => Some(5),
+                b'@' | b'^' => Some(6),
+                b'&' | b'|' | b'$' => Some(7),
+                b'=' | b'<' | b'>' => Some(8),
+                _ => None,
+            })
+            .map_or(false, |l| l == lvl),
+        _ => false,
+    }
+}
+
 impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
     A::AstBox<'src>: Located<Span = S>,
@@ -14,46 +38,232 @@ where
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
-    fn parse_prefix_expr(&mut self, prefixes: &mut SmallVec<[(&'src str, S); 1]>, out: &mut Vec<A::AstBox<'src>>) -> (A::AstBox<'src>, bool) {
+    fn parse_prefix_expr(
+        &mut self,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
         let start = prefixes.len();
         loop {
             match self.current_token() {
-                Some(Token {kind: TokenKind::Comment(..), ..}) => {
+                Some(Token {
+                    kind: TokenKind::Comment(..),
+                    ..
+                }) => {
                     if self.eat_comment(out) {
-                        return (A::make_box(asts::ErrorAST {
-                            loc: self.curr_loc(),
-                        }), true);
+                        return (
+                            A::make_box(asts::ErrorAST {
+                                loc: self.curr_loc(),
+                            }),
+                            true,
+                        );
                     }
                 }
-                Some(&Token {kind: TokenKind::PreOp(op), span}) => {
+                Some(&Token {
+                    kind: TokenKind::PreOp(op),
+                    span,
+                }) => {
                     prefixes.push((op, span));
                     self.index += 1;
                 }
-                Some(&Token {kind: TokenKind::AmbigOp(op), span}) => {
+                Some(&Token {
+                    kind: TokenKind::AmbigOp(op),
+                    span,
+                }) => {
                     prefixes.push((op.as_pre_str(), span));
                     self.index += 1;
                 }
                 _ => break,
             }
         }
-        let (base, ret) = self.parse_atom(out);
-        let ast = prefixes.drain(start..).rfold(base, |ast, (op, span)| A::make_box(asts::CallAST {
-            func: A::make_box(asts::VarAST {
-                name: op.into(),
-                loc: span,
-            }),
-            arg: ast
-        }));
+        let (base, ret) = self.parse_atom(necessary, out);
+        let ast = prefixes.drain(start..).rfold(base, |ast, (op, span)| {
+            A::make_box(asts::CallAST {
+                func: A::make_box(asts::VarAST {
+                    name: op.into(),
+                    loc: span,
+                }),
+                arg: ast,
+            })
+        });
         (ast, ret)
     }
+
+    fn parse_lhs_expr(
+        &mut self,
+        lvl: u8,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        let start = self.index;
+        let (mut ast, ret) = self.parse_level(lvl - 1, necessary, prefixes, infixes, out);
+        if ret {
+            return (ast, true);
+        }
+        if self.index == start {
+            return (ast, false);
+        }
+        loop {
+            if self.eat_comment(out) {
+                return (ast, true);
+            }
+            let Some(tok) = self.current_token() else {
+                return (ast, false);
+            };
+            if !matches_prec(&tok.kind, lvl) {
+                return (ast, false);
+            }
+            let func = A::make_box(asts::VarAST {
+                name: tok.kind.inf_op_str().unwrap().into(),
+                loc: tok.span,
+            });
+            self.index += 1;
+            let (arg, err) = self.parse_level(lvl - 1, true, prefixes, infixes, out);
+            let inter = A::make_box(asts::CallAST { func, arg: ast });
+            ast = A::make_box(asts::CallAST { func: inter, arg });
+            if err {
+                return (ast, true);
+            }
+        }
+    }
+
+    fn parse_rhs_expr(
+        &mut self,
+        lvl: u8,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        let start_idx = infixes.len();
+        let start = self.index;
+        let (mut ast, ret) = self.parse_level(lvl - 1, necessary, prefixes, infixes, out);
+        if ret {
+            return (ast, true);
+        }
+        if self.index == start {
+            return (ast, false);
+        }
+        let err = loop {
+            if self.eat_comment(out) {
+                break true;
+            }
+            let Some(tok) = self.current_token() else {
+                break false;
+            };
+            if !matches_prec(&tok.kind, lvl) {
+                break false;
+            }
+            let op = tok.kind.inf_op_str().unwrap();
+            let span = tok.span;
+            self.index += 1;
+            let (rhs, err) = self.parse_level(lvl - 1, true, prefixes, infixes, out);
+            infixes.push((op, span, ast));
+            ast = rhs;
+            if err {
+                break true;
+            }
+        };
+        ast = infixes
+            .drain(start_idx..)
+            .rfold(ast, |rhs, (op, loc, lhs)| {
+                let func = A::make_box(asts::VarAST {
+                    name: op.into(),
+                    loc,
+                });
+                let inter = A::make_box(asts::CallAST { func, arg: lhs });
+                A::make_box(asts::CallAST {
+                    func: inter,
+                    arg: rhs,
+                })
+            });
+        (ast, err)
+    }
+
+    fn parse_fns_expr(
+        &mut self,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        let start = self.index;
+        let (mut ast, ret) = self.parse_level(1, necessary, prefixes, infixes, out);
+        if ret {
+            return (ast, true);
+        }
+        if self.index == start {
+            return (ast, false);
+        }
+        loop {
+            if self.eat_comment(out) {
+                return (ast, true);
+            }
+            if matches!(
+                self.current_token(),
+                Some(Token {
+                    kind: TokenKind::AmbigOp(_),
+                    ..
+                })
+            ) {
+                return (ast, false);
+            }
+            let start = self.index;
+            let (arg, err) = self.parse_level(1, false, prefixes, infixes, out);
+            if start == self.index {
+                return (ast, false);
+            }
+            ast = A::make_box(asts::CallAST { func: ast, arg });
+            if err {
+                return (ast, true);
+            }
+        }
+    }
+
+    #[inline]
+    fn parse_types_expr(
+        &mut self,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        self.parse_fns_expr(necessary, prefixes, infixes, out)
+    }
+
+    #[inline(always)]
+    fn parse_level(
+        &mut self,
+        lvl: u8,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        match lvl {
+            0 | 1 => self.parse_prefix_expr(necessary, prefixes, out), // 1 might be replaced with indexing
+            2 => self.parse_fns_expr(necessary, prefixes, infixes, out),
+            3 => self.parse_types_expr(necessary, prefixes, infixes, out),
+            4 | 5 | 7 | 8 => self.parse_lhs_expr(lvl, necessary, prefixes, infixes, out),
+            6 | 9 | 10 => self.parse_rhs_expr(lvl, necessary, prefixes, infixes, out),
+            255 => self.parse_level(10, necessary, prefixes, infixes, out),
+            _ => unreachable!(),
+        }
+    }
+
     /// Parse an expression. If not `allow_extra`, give an error with extra input.
     pub fn parse_expr(
         &mut self,
         allow_extra: bool,
+        necessary: bool,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (A::AstBox<'src>, bool) {
         let mut prefixes = SmallVec::new();
-        let (ast, mut err) = self.parse_prefix_expr(&mut prefixes, out);
+        let mut infixes = SmallVec::new();
+        let (ast, mut err) = self.parse_level(255, necessary, &mut prefixes, &mut infixes, out);
         if !err && !allow_extra {
             err = self.eat_comment(out);
             if !err && self.index < self.input.len() {
@@ -64,7 +274,11 @@ where
         (ast, err)
     }
 
-    fn parse_atom(&mut self, out: &mut Vec<A::AstBox<'src>>) -> (A::AstBox<'src>, bool) {
+    fn parse_atom(
+        &mut self,
+        necessary: bool,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
         self.index += 1;
         match self.input.get(self.index - 1) {
             Some(&Token {
@@ -110,7 +324,7 @@ where
                         );
                     }
                     self.index += 1;
-                    let (ast, err) = self.parse_expr(true, out);
+                    let (ast, err) = self.parse_expr(true, false, out);
                     if err {
                         return (
                             A::make_box(asts::ParenAST {
@@ -170,8 +384,23 @@ where
                 }
             },
             _ => {
-                let err = self.exp_found("an expression");
-                (A::make_box(asts::ErrorAST {loc: self.curr_loc()}), self.report(err))
+                if necessary {
+                    let err = self.exp_found("an expression");
+                    (
+                        A::make_box(asts::ErrorAST {
+                            loc: self.curr_loc(),
+                        }),
+                        self.report(err),
+                    )
+                } else {
+                    self.index -= 1;
+                    (
+                        A::make_box(asts::NullAST {
+                            loc: self.curr_loc(),
+                        }),
+                        false,
+                    )
+                }
             }
         }
     }

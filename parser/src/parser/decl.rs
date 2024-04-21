@@ -256,7 +256,7 @@ where
                             true,
                         );
                     }
-                    let (ty, ret) = self.parse_expr(true, out);
+                    let (ty, ret) = self.parse_expr(true, true, out);
                     params.push(asts::FnParam {
                         name: n.into(),
                         loc,
@@ -344,7 +344,7 @@ where
         }) = self.input.get(self.index)
         {
             self.index += 1;
-            let (res, ret) = self.parse_expr(true, out);
+            let (res, ret) = self.parse_expr(true, true, out);
             if ret {
                 return (
                     Some(asts::LetAST {
@@ -387,7 +387,7 @@ where
             );
         }
         self.index += 1;
-        let (body, err) = self.parse_expr(true, out);
+        let (body, err) = self.parse_expr(true, true, out);
         (
             Some(asts::LetAST {
                 kw,

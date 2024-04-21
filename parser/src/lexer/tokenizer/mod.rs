@@ -126,15 +126,13 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
 
     fn tokenize(&mut self) {
         macro_rules! single_char {
-            ($tok:expr) => {
-                {
-                    self.tokens.push(Token {
-                        kind: $tok,
-                        span: S::new(self.index + self.offset, 1),
-                    });
-                    self.index += 1;
-                }
-            }
+            ($tok:expr) => {{
+                self.tokens.push(Token {
+                    kind: $tok,
+                    span: S::new(self.index + self.offset, 1),
+                });
+                self.index += 1;
+            }};
         }
         while let Some(ch) = self.next_char(true) {
             let ch = match ch {
@@ -170,22 +168,35 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                     });
                     self.index += len;
                 }
-                '+' | '-' => {
-                    match self.input.get(self.index + 1).copied() {
-                        Some(b'0'..=b'9') => {
-                            if self.parse_num() {
-                                return;
-                            }
+                '+' | '-' => match self.input.get(self.index + 1).copied() {
+                    Some(b'0'..=b'9') => {
+                        if self.parse_num() {
+                            return;
                         }
-                        Some(b'$' | b'&' | b'*' | b'%' | b'+' | b'-' | b'/' | b'=' | b'<' | b'>' | b'@' | b'^' | b'|') => self.parse_inf_op(),
-                        _ => single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'+' {AmbigOp::Plus} else {AmbigOp::Minus}))
                     }
-                }
+                    Some(
+                        b'$' | b'&' | b'*' | b'%' | b'+' | b'-' | b'/' | b'=' | b'<' | b'>' | b'@'
+                        | b'^' | b'|',
+                    ) => self.parse_inf_op(),
+                    _ => single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'+' {
+                        AmbigOp::Plus
+                    } else {
+                        AmbigOp::Minus
+                    })),
+                },
                 '*' | '&' => {
-                    if self.input.get(self.index + 1).map_or(false, |c| b"".contains(c)) {
+                    if self
+                        .input
+                        .get(self.index + 1)
+                        .map_or(false, |c| b"".contains(c))
+                    {
                         self.parse_inf_op();
                     } else {
-                        single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'*' {AmbigOp::Star} else {AmbigOp::And}))
+                        single_char!(TokenKind::AmbigOp(if self.input[self.index] == b'*' {
+                            AmbigOp::Star
+                        } else {
+                            AmbigOp::And
+                        }))
                     }
                 }
                 '$' | '<' | '>' | '@' | '^' | '|' | '%' => self.parse_inf_op(),
@@ -261,7 +272,13 @@ where
 
 #[cfg(feature = "rayon")]
 #[inline(never)]
-pub fn tokenize<'src, I: AsRef<[u8]> + ?Sized, F: Copy + Send + Sync, S: SpanConstruct + Send, E: Sync>(
+pub fn tokenize<
+    'src,
+    I: AsRef<[u8]> + ?Sized,
+    F: Copy + Send + Sync,
+    S: SpanConstruct + Send,
+    E: Sync,
+>(
     input: &'src I,
     file: F,
     errs: E,

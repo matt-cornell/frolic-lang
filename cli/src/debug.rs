@@ -45,7 +45,10 @@ impl Runnable for FrolicDebugLex {
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
 
-        let errs = Mutex::new(DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new()));
+        let errs = Mutex::new(DiagnosticPrint::new(
+            stderr,
+            miette::GraphicalReportHandler::new(),
+        ));
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
@@ -101,7 +104,10 @@ impl Runnable for FrolicDebugParse {
         use frolic_utils::prelude::*;
         use std::sync::Mutex;
 
-        let errs = Mutex::new(DiagnosticPrint::new(stderr, miette::GraphicalReportHandler::new()));
+        let errs = Mutex::new(DiagnosticPrint::new(
+            stderr,
+            miette::GraphicalReportHandler::new(),
+        ));
 
         type Reporter<E> = Mutex<DiagnosticPrint<E, miette::GraphicalReportHandler>>;
 
@@ -131,20 +137,10 @@ impl Runnable for FrolicDebugParse {
         };
 
         if self.expr {
-            let ast = parse_expr(
-                &toks,
-                file,
-                &errs,
-                DebugAsts::new(),
-            );
+            let ast = parse_expr(&toks, file, &errs, DebugAsts::new());
             write!(stdout, "{ast:#?}")?;
         } else {
-            let ast = parse_tl(
-                &toks,
-                file,
-                &errs,
-                DebugAsts::new(),
-            );
+            let ast = parse_tl(&toks, file, &errs, DebugAsts::new());
             write!(stdout, "{ast:#?}")?;
         }
         errs.into_inner().unwrap().into_result()?;

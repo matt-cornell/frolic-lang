@@ -71,9 +71,11 @@ where
     fn curr_span(&self) -> S {
         self.input.get(self.index).map_or_else(
             || {
-                S::loc(self.input
-                    .last()
-                    .map_or(0, |t| t.span.offset() + t.span.len()))
+                S::loc(
+                    self.input
+                        .last()
+                        .map_or(0, |t| t.span.offset() + t.span.len()),
+                )
             },
             |t| t.span,
         )
@@ -165,9 +167,18 @@ where
                     return (None, true);
                 }
                 let (id, mspan) = match self.current_token() {
-                    Some(&Token {kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::Ident(op), span}) => (op, span),
-                    Some(&Token {kind: TokenKind::AmbigOp(op), span}) => (op.as_inf_str(), span),
-                    Some(&Token {kind: TokenKind::Keyword(kw), span}) => (kw.as_str(), span),
+                    Some(&Token {
+                        kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::Ident(op),
+                        span,
+                    }) => (op, span),
+                    Some(&Token {
+                        kind: TokenKind::AmbigOp(op),
+                        span,
+                    }) => (op.as_inf_str(), span),
+                    Some(&Token {
+                        kind: TokenKind::Keyword(kw),
+                        span,
+                    }) => (kw.as_str(), span),
                     _ => {
                         if necessary {
                             let tok = self.current_token().cloned();
@@ -178,15 +189,12 @@ where
                                 self.report(ParseASTError::ExpectedFound {
                                     ex: "an identifier",
                                     span,
-                                    found: tok
-                                        .map(|t| {
-                                            t.kind
-                                        }),
+                                    found: tok.map(|t| t.kind),
                                 }),
-                            )
+                            );
                         } else {
                             self.index = orig;
-                            return (None, false)
+                            return (None, false);
                         }
                     }
                 };
@@ -194,7 +202,11 @@ where
                 if self.eat_comment(out) {
                     return (Some((id, start.merge(mspan))), true);
                 }
-                if let Some(&Token {kind: TokenKind::Close(Delim::Paren), span: end}) = self.current_token() {
+                if let Some(&Token {
+                    kind: TokenKind::Close(Delim::Paren),
+                    span: end,
+                }) = self.current_token()
+                {
                     self.index += 1;
                     (Some((id, start.merge(end))), false)
                 } else if necessary {
@@ -215,10 +227,7 @@ where
                         self.report(ParseASTError::ExpectedFound {
                             ex: "an identifier",
                             span,
-                            found: tok
-                                .map(|t| {
-                                    t.kind
-                                }),
+                            found: tok.map(|t| t.kind),
                         }),
                     )
                 } else {
@@ -241,12 +250,23 @@ where
                     if let Some(res) = res {
                         out.push(A::make_box(res));
                     }
-                    if matches!(self.current_token(), Some(Token {kind: TokenKind::Special(SpecialChar::Semicolon), ..})) {self.index += 1} else {
+                    if matches!(
+                        self.current_token(),
+                        Some(Token {
+                            kind: TokenKind::Special(SpecialChar::Semicolon),
+                            ..
+                        })
+                    ) {
+                        self.index += 1
+                    } else {
                         let err = self.exp_found("';' after let-declaration");
                         if self.report(err) {
                             return (out, true);
                         }
-                        let Some(next) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon)) else {
+                        let Some(next) = self.input[self.index..]
+                            .iter()
+                            .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
+                        else {
                             return (out, false);
                         };
                         self.index += next;
@@ -264,7 +284,10 @@ where
                     if ret {
                         return (out, true);
                     }
-                    let Some(next) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon)) else {
+                    let Some(next) = self.input[self.index..]
+                        .iter()
+                        .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
+                    else {
                         return (out, false);
                     };
                     self.index += next;
@@ -303,9 +326,15 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
-    parser.parse_expr(false, &mut vec![]).0
+    parser.parse_expr(false, false, &mut vec![]).0
 }
-pub fn parse_tl<'src, A: AstDefs, F: Copy, S: SpanConstruct, E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>>(
+pub fn parse_tl<
+    'src,
+    A: AstDefs,
+    F: Copy,
+    S: SpanConstruct,
+    E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
+>(
     input: &[Token<'src, S>],
     file: F,
     mut errs: E,

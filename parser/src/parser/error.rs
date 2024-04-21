@@ -1,7 +1,7 @@
 use super::*;
 use miette::Diagnostic;
-use thiserror::Error;
 use std::fmt::Debug;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
 pub enum ParseASTError<'src, S: Span> {

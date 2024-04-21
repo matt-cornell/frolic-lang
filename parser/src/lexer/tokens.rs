@@ -129,7 +129,10 @@ impl Debug for TokenKind<'_> {
             Self::Special(sc) => f.debug_tuple("Special").field(sc).finish(),
             Self::PreOp(op) => f.debug_tuple("PreOp").field(op).finish(),
             Self::InfOp(op) => f.debug_tuple("InfOp").field(op).finish(),
-            Self::AmbigOp(ch) => f.debug_tuple("AmbigOp").field(&(*ch as u8 as char)).finish(),
+            Self::AmbigOp(ch) => f
+                .debug_tuple("AmbigOp")
+                .field(&(*ch as u8 as char))
+                .finish(),
         }
     }
 }
@@ -144,6 +147,15 @@ impl<'src> TokenKind<'src> {
             Self::Keyword(kw)
         } else {
             Self::Ident(i)
+        }
+    }
+
+    #[inline]
+    pub fn inf_op_str(&self) -> Option<&'src str> {
+        match self {
+            Self::InfOp(op) => Some(op),
+            Self::AmbigOp(op) => Some(op.as_inf_str()),
+            _ => None,
         }
     }
 }
