@@ -56,21 +56,30 @@ pub enum SpecialChar {
     Dot,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, IntoStaticStr, FromRepr)]
+#[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
 #[repr(u8)]
 pub enum AmbigOp {
-    #[strum(serialize = "+")]
     Plus = b'+',
-    #[strum(serialize = "-")]
     Minus = b'-',
-    #[strum(serialize = "*")]
     Star = b'*',
-    #[strum(serialize = "&")]
     And = b'&',
 }
 impl AmbigOp {
-    pub fn as_str(self) -> &'static str {
-        self.into()
+    pub fn as_inf_str(self) -> &'static str {
+        match self {
+            Self::Plus => "+",
+            Self::Minus => "-",
+            Self::Star => "*",
+            Self::And => "&",
+        }
+    }
+    pub fn as_pre_str(self) -> &'static str {
+        match self {
+            Self::Plus => "~+",
+            Self::Minus => "~-",
+            Self::Star => "~*",
+            Self::And => "~&",
+        }
     }
 }
 

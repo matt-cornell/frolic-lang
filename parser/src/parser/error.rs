@@ -23,11 +23,9 @@ pub enum ParseASTError<'src, S: Span> {
     #[error("Expected {ex}")]
     ExpectedFound {
         ex: &'static str,
-        #[label]
+        #[label("found {}", .found.as_ref().map_or("EOF".to_string(), |t| format!("{t:?}")))]
         span: S,
-        #[label("found {found:?}")]
-        found_loc: Option<S>,
-        found: TokenKind<'src>,
+        found: Option<TokenKind<'src>>,
     },
     #[error("Unmatched '{}'", .kind.get_char(!.close))]
     UnmatchedDelimeter {

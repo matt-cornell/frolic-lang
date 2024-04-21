@@ -12,6 +12,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     fn parse_dottedname(
         &mut self,
@@ -381,8 +382,7 @@ where
                 self.report(ParseASTError::ExpectedFound {
                     ex: "value for let-binding",
                     span: loc,
-                    found_loc: None,
-                    found: TokenKind::Comment(b"".into(), CommentKind::Ignore),
+                    found: None,
                 }),
             );
         }

@@ -21,9 +21,11 @@ impl From<PrettySpan> for miette::SourceSpan {
 }
 impl Span for PrettySpan {
     fn merge(self, other: Self) -> Self {
+        let start = std::cmp::min(self.offset, other.offset);
+        let end = std::cmp::max(self.offset + self.len, other.offset + other.len);
         Self {
-            offset: self.offset,
-            len: other.offset + other.len - self.offset,
+            offset: start,
+            len: end - start,
         }
     }
     
@@ -70,9 +72,11 @@ pub trait SpanConstruct: Span {
 
 impl Span for miette::SourceSpan {
     fn merge(self, other: Self) -> Self {
+        let start = std::cmp::min(self.offset(), other.offset());
+        let end = std::cmp::max(self.offset() + self.len(), other.offset() + other.len());
         miette::SourceSpan::new(
-            self.offset().into(),
-            other.offset() + other.len() - self.offset(),
+            start.into(),
+            end - start,
         )
     }
     fn offset(self) -> usize {

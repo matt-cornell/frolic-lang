@@ -58,3 +58,16 @@ impl<S: Span> Located for NullAST<S> {
         self.loc
     }
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CallAST<A> {
+    pub func: A,
+    pub arg: A,
+}
+impl<A: Located> Located for CallAST<A> {
+    type Span = A::Span;
+
+    fn loc(&self) -> Self::Span {
+        self.func.loc().merge(self.arg.loc())
+    }
+}

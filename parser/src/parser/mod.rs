@@ -28,6 +28,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     /// Create a new parser
     pub fn new(
@@ -58,8 +59,7 @@ where
         ParseASTError::ExpectedFound {
             ex,
             span,
-            found_loc: tok.as_ref().map(|t| t.span),
-            found: tok.map_or(TokenKind::EMPTY_COMMENT, |t| t.kind.clone()),
+            found: tok.map(|t| t.kind.clone()),
         }
     }
 
@@ -147,6 +147,7 @@ where
         necessary: bool,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (Option<(&'src str, S)>, bool) {
+        let orig = self.index;
         match self.current_token() {
             Some(&Token {
                 kind: TokenKind::Ident(i),
@@ -165,7 +166,7 @@ where
                 }
                 let (id, mspan) = match self.current_token() {
                     Some(&Token {kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::Ident(op), span}) => (op, span),
-                    Some(&Token {kind: TokenKind::AmbigOp(op), span}) => (op.as_str(), span),
+                    Some(&Token {kind: TokenKind::AmbigOp(op), span}) => (op.as_inf_str(), span),
                     Some(&Token {kind: TokenKind::Keyword(kw), span}) => (kw.as_str(), span),
                     _ => {
                         if necessary {
@@ -177,15 +178,14 @@ where
                                 self.report(ParseASTError::ExpectedFound {
                                     ex: "an identifier",
                                     span,
-                                    found_loc: tok.as_ref().map(|t| t.span),
                                     found: tok
-                                        .map_or(TokenKind::Comment(b"".into(), CommentKind::Ignore), |t| {
+                                        .map(|t| {
                                             t.kind
                                         }),
                                 }),
                             )
                         } else {
-                            self.index -= 1;
+                            self.index = orig;
                             return (None, false)
                         }
                     }
@@ -197,9 +197,12 @@ where
                 if let Some(&Token {kind: TokenKind::Close(Delim::Paren), span: end}) = self.current_token() {
                     self.index += 1;
                     (Some((id, start.merge(end))), false)
-                } else {
+                } else if necessary {
                     let err = self.exp_found("')'");
                     (Some((id, start.merge(mspan))), self.report(err))
+                } else {
+                    self.index = orig;
+                    (None, false)
                 }
             }
             _ => {
@@ -212,9 +215,8 @@ where
                         self.report(ParseASTError::ExpectedFound {
                             ex: "an identifier",
                             span,
-                            found_loc: tok.as_ref().map(|t| t.span),
                             found: tok
-                                .map_or(TokenKind::Comment(b"".into(), CommentKind::Ignore), |t| {
+                                .map(|t| {
                                     t.kind
                                 }),
                         }),
@@ -298,6 +300,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     parser.parse_expr(false, &mut vec![]).0
@@ -318,6 +321,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     let nodes = parser.parse_top_level();
