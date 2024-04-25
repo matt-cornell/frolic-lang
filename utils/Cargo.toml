@@ -6,6 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ahash = "0.8.11"
 boxcar = "0.2.4"
+hashbrown = { version = "0.14.3", features = ["nightly"] }
 miette.workspace = true
+parking_lot = { version = "0.12.1", features = ["nightly"] }
 smallvec.workspace = true
