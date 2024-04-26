@@ -188,7 +188,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                     if self
                         .input
                         .get(self.index + 1)
-                        .map_or(false, |c| b"".contains(c))
+                        .map_or(false, |c| b"$&*%+-/=<>@^|!.:?~".contains(c))
                     {
                         self.parse_inf_op();
                     } else {

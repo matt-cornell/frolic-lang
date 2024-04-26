@@ -1,4 +1,5 @@
 use super::*;
+use std::borrow::Cow;
 use smallvec::SmallVec;
 
 fn matches_prec(op: &TokenKind, lvl: u8) -> bool {
@@ -21,7 +22,44 @@ fn matches_prec(op: &TokenKind, lvl: u8) -> bool {
                 _ => None,
             })
             .map_or(false, |l| l == lvl),
+        TokenKind::Special(SpecialChar::Arrow) => lvl == 11,
         _ => false,
+    }
+}
+
+/// Lambdas are right-associative, but we do this so that we don't need recursion
+struct LambdaStub<'src, A: Located> {
+    bs: A::Span,
+    arg: Cow<'src, str>,
+    aloc: A::Span,
+    argty: Option<A>,
+    retty: Option<A>,
+}
+impl<'src, A: Located> LambdaStub<'src, A> {
+    pub fn into_ast(self, body: A) -> asts::LambdaAST<'src, A> {
+        let Self {
+            bs,
+            arg,
+            aloc,
+            argty,
+            retty,
+        } = self;
+        asts::LambdaAST {
+            bs,
+            arg,
+            aloc,
+            argty,
+            retty,
+            body,
+        }
+    }
+    /// allows for a more functional solution
+    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A>>(body: A, this: Self) -> D::AstBox<'src>
+    where
+        asts::LambdaAST<'src, A>: Unsize<D::AstTrait<'src>>,
+        A: 'src,
+    {
+        D::make_box(this.into_ast(body))
     }
 }
 
@@ -37,6 +75,9 @@ where
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     fn parse_prefix_expr(
         &mut self,
@@ -170,15 +211,29 @@ where
         ast = infixes
             .drain(start_idx..)
             .rfold(ast, |rhs, (op, loc, lhs)| {
-                let func = A::make_box(asts::VarAST {
-                    name: op.into(),
-                    loc,
-                });
-                let inter = A::make_box(asts::CallAST { func, arg: lhs });
-                A::make_box(asts::CallAST {
-                    func: inter,
-                    arg: rhs,
-                })
+                match op {
+                    "->" => A::make_box(asts::FunctionTypeAST {
+                        oploc: loc,
+                        arg: lhs,
+                        ret: rhs,
+                    }),
+                    "||" | "&&" => A::make_box(asts::ShortCircuitAST {
+                        oploc: loc,
+                        is_or: op == "||",
+                        lhs, rhs,
+                    }),
+                    _ => {
+                        let func = A::make_box(asts::VarAST {
+                            name: op.into(),
+                            loc,
+                        });
+                        let inter = A::make_box(asts::CallAST { func, arg: lhs });
+                        A::make_box(asts::CallAST {
+                            func: inter,
+                            arg: rhs,
+                        })
+                    }
+                }
             });
         (ast, err)
     }
@@ -248,19 +303,208 @@ where
             2 => self.parse_fns_expr(necessary, prefixes, infixes, out),
             3 => self.parse_types_expr(necessary, prefixes, infixes, out),
             4 | 5 | 7 | 8 => self.parse_lhs_expr(lvl, necessary, prefixes, infixes, out),
-            6 | 9 | 10 => self.parse_rhs_expr(lvl, necessary, prefixes, infixes, out),
-            255 => self.parse_level(10, necessary, prefixes, infixes, out),
+            6 | 9 | 10 | 11 => self.parse_rhs_expr(lvl, necessary, prefixes, infixes, out),
+            255 => self.parse_level(11, necessary, prefixes, infixes, out),
             _ => unreachable!(),
         }
+    }
+
+    fn parse_lambda(
+        &mut self,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> Option<Result<LambdaStub<'src, A::AstBox<'src>>, ()>> {
+        let Some(&Token {
+            kind: TokenKind::Special(SpecialChar::Backslash),
+            span: bs,
+        }) = self.current_token()
+        else {
+            return None;
+        };
+        self.index += 1;
+        if self.eat_comment(out) {
+            return Some(Err(()));
+        }
+        let Some(tok) = self.current_token() else {
+            let err = self.exp_found("lambda parameter");
+            return self.report(err).then_some(Err(()));
+        };
+        let (arg, aloc, argty) = match tok.kind {
+            TokenKind::Ident(n) => {
+                let param = (n.into(), tok.span, None);
+                self.index += 1;
+                param
+            }
+            TokenKind::Open(Delim::Paren) => 'param: {
+                self.index += 1;
+                if self.eat_comment(out) {
+                    return Some(Err(()));
+                }
+                let (n, loc) = match self.parse_ident(true, out) {
+                    (_, true) => {
+                        return Some(Err(()))
+                    }
+                    (Some(r), false) => r,
+                    (None, false) => {
+                        let next =
+                            self.input[self.index..]
+                                .iter()
+                                .enumerate()
+                                .find_map(|(n, t)| match t.kind {
+                                    TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
+                                    TokenKind::Close(Delim::Paren) => Some((n, 1)),
+                                    TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
+                                    _ => None,
+                                });
+                        match next {
+                            Some((n, 0)) => {
+                                self.index += n;
+                                ("<error>", self.curr_loc())
+                            }
+                            Some((n, 1)) => {
+                                self.index += n;
+                                break 'param ("<error>".into(), self.curr_loc(), None);
+                            }
+                            Some((n, 2)) => {
+                                self.index += n.saturating_sub(1);
+                                break 'param ("<error>".into(), self.curr_loc(), None);
+                            }
+                            _ => return None,
+                        }
+                    }
+                };
+                if self.eat_comment(out) {
+                    return Some(Err(()));
+                }
+                if !matches!(
+                    self.current_token(),
+                    Some(Token {
+                        kind: TokenKind::Keyword(Keyword::Of),
+                        ..
+                    })
+                ) {
+                    let err = self.exp_found("parameter type");
+                    if self.report(err) {
+                        return Some(Err(()));
+                    }
+                    let next =
+                        self.input[self.index..]
+                            .iter()
+                            .enumerate()
+                            .find_map(|(n, t)| match t.kind {
+                                TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
+                                TokenKind::Close(Delim::Paren) => Some((n, 1)),
+                                TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
+                                _ => None,
+                            });
+                    match next {
+                        Some((n, 0)) => self.index += n,
+                        Some((n, 1)) => {
+                            self.index += n;
+                            break 'param ("<error>".into(), self.curr_loc(), None);
+                        }
+                        Some((n, 2)) => {
+                            self.index += n.saturating_sub(1);
+                            break 'param ("<error>".into(), self.curr_loc(), None);
+                        }
+                        _ => return None,
+                    }
+                }
+                self.index += 1;
+                if self.eat_comment(out) {
+                    return Some(Err(()));
+                }
+                let (ty, ret) = self.parse_expr(true, true, out);
+                if ret || self.eat_comment(out) {
+                    return Some(Err(()));
+                }
+                let param: (Cow<'src, str>, _, _) = (n.into(), loc, Some(ty));
+                if !matches!(
+                    self.current_token(),
+                    Some(Token {
+                        kind: TokenKind::Close(Delim::Paren),
+                        ..
+                    })
+                ) {
+                    let err = self.exp_found("')'");
+                    if self.report(err) {
+                        return Some(Err(()));
+                    }
+                    let next =
+                        self.input[self.index..]
+                            .iter()
+                            .enumerate()
+                            .find_map(|(n, t)| match t.kind {
+                                TokenKind::Keyword(Keyword::Of) => Some((n, 2)),
+                                TokenKind::Close(Delim::Paren) => Some((n, 1)),
+                                TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
+                                _ => None,
+                            });
+                    match next {
+                        Some((n, 1)) => {
+                            self.index += n;
+                            break 'param param;
+                        }
+                        Some((n, 2)) => {
+                            self.index += n.saturating_sub(1);
+                            break 'param param;
+                        }
+                        _ => return None,
+                    }
+                }
+                self.index += 1;
+                param
+            }
+            _ => {
+                let err = self.exp_found("lambda parameter");
+                return self.report(err).then_some(Err(()));
+            }
+        };
+        if self.eat_comment(out) {
+            return Some(Err(()));
+        }
+        let retty = if let Some(Token {
+            kind: TokenKind::Keyword(Keyword::Of),
+            ..
+        }) = self.input.get(self.index)
+        {
+            self.index += 1;
+            let (res, ret) = self.parse_expr(true, true, out);
+            if ret {
+                return Some(Err(()));
+            }
+            Some(res)
+        } else {
+            None
+        };
+        if self.eat_comment(out) {
+            return Some(Err(()));
+        }
+        match self.current_token() {
+            Some(Token {kind: TokenKind::Special(SpecialChar::Arrow), ..}) => self.index += 1,
+            Some(Token {kind: TokenKind::Special(SpecialChar::Backslash), ..}) => {},
+            _ => {
+                let err = self.exp_found("lambda arrow");
+                if self.report(err) {
+                    return Some(Err(()));
+                }
+            }
+        }
+        Some(Ok(LambdaStub { bs, arg, aloc, argty, retty }))
     }
 
     /// Parse an expression. If not `allow_extra`, give an error with extra input.
     pub fn parse_expr(
         &mut self,
         allow_extra: bool,
-        necessary: bool,
+        mut necessary: bool,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (A::AstBox<'src>, bool) {
+        let Ok(lambdas) = std::iter::from_fn(|| self.parse_lambda(out)).collect::<Result<SmallVec<[_; 3]>, ()>>() else {
+            return (A::make_box(asts::ErrorAST {
+                loc: self.curr_loc()
+            }), true);
+        };
+        necessary |= !lambdas.is_empty();
         let mut prefixes = SmallVec::new();
         let mut infixes = SmallVec::new();
         let (ast, mut err) = self.parse_level(255, necessary, &mut prefixes, &mut infixes, out);
@@ -271,7 +515,7 @@ where
                 err = self.report(ef);
             }
         }
-        (ast, err)
+        (lambdas.into_iter().rfold(ast, LambdaStub::into_ast_boxed::<A>), err)
     }
 
     fn parse_atom(

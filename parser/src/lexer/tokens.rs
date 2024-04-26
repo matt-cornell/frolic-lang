@@ -54,6 +54,7 @@ pub enum SpecialChar {
     Backslash,
     Equals,
     Dot,
+    Arrow,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, FromRepr)]
@@ -155,6 +156,7 @@ impl<'src> TokenKind<'src> {
         match self {
             Self::InfOp(op) => Some(op),
             Self::AmbigOp(op) => Some(op.as_inf_str()),
+            Self::Special(SpecialChar::Arrow) => Some("->"),
             _ => None,
         }
     }
