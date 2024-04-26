@@ -75,6 +75,18 @@ impl<T, E: Into<T>> ErrorReporter<E> for Vec<T> {
         false
     }
 }
+impl<T, E: Into<T>> ErrorReporter<E> for boxcar::Vec<T> {
+    fn report(&mut self, err: E) -> bool {
+        self.push(err.into());
+        false
+    }
+}
+impl<T, E: Into<T>> ErrorReporter<E> for &boxcar::Vec<T> {
+    fn report(&mut self, err: E) -> bool {
+        self.push(err.into());
+        false
+    }
+}
 
 impl<E, T: ErrorReporter<E>> ErrorReporter<E> for Mutex<T> {
     fn report(&mut self, err: E) -> bool {
