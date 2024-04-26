@@ -1,3 +1,5 @@
+//! Parallelization for large inputs.
+
 /// With rayon disabled, just call our operator function on the whole input
 #[cfg(not(feature = "rayon"))]
 pub fn dispatch_chunks<'a, T, R>(

@@ -1,5 +1,6 @@
 use super::*;
 
+/// A call-expression, `func arg`. Keep currying, don't try to accumulate multiple args here.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallAST<A> {
     pub func: A,
@@ -13,6 +14,8 @@ impl<A: Located> Located for CallAST<A> {
     }
 }
 
+/// A lambda expression, `\arg -> body`, or in full form, `\(arg of argty) of retty -> body`. The
+/// arrow isn't necessary if `body` is also a lambda.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LambdaAST<'src, A: Located> {
     pub bs: A::Span,

@@ -2,7 +2,9 @@ use super::*;
 
 #[derive(Debug, Clone, Subcommand)]
 pub enum FrolicDebug {
+    /// Lex the input code, printing out the tokens.
     Lex(FrolicDebugLex),
+    /// Parse the input code, printing out the AST.
     Parse(FrolicDebugParse),
 }
 impl Runnable for FrolicDebug {
@@ -23,8 +25,10 @@ impl Runnable for FrolicDebug {
 #[derive(Debug, Clone, Args)]
 #[group(required = true, multiple = false)]
 pub struct Source {
+    /// Input code, as an argument.
     #[arg(short, long)]
     pub code: Option<String>,
+    /// Path to the input to read.
     #[arg(short, long)]
     pub path: Option<PathBuf>,
 }

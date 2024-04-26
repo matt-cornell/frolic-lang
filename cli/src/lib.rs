@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 pub mod debug;
 
+/// Some kind of command that can be run.
 pub trait Runnable: Sized {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
         self,
@@ -11,8 +12,13 @@ pub trait Runnable: Sized {
         stdout: O,
         stderr: E,
     ) -> eyre::Result<()>;
+    /// Run this command with standard input/output
     fn run_stdio(self) -> eyre::Result<()> {
         self.run(io::stdin(), io::stdout(), io::stderr())
+    }
+    /// Run this command with `io::Empty` for all streams
+    fn silent(self) -> eyre::Result<()> {
+        self.run(io::empty(), io::empty(), io::empty())
     }
 }
 
