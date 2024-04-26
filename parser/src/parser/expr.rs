@@ -1,6 +1,6 @@
 use super::*;
-use std::borrow::Cow;
 use smallvec::SmallVec;
+use std::borrow::Cow;
 
 fn matches_prec(op: &TokenKind, lvl: u8) -> bool {
     match op {
@@ -210,29 +210,28 @@ where
         };
         ast = infixes
             .drain(start_idx..)
-            .rfold(ast, |rhs, (op, loc, lhs)| {
-                match op {
-                    "->" => A::make_box(asts::FunctionTypeAST {
-                        oploc: loc,
-                        arg: lhs,
-                        ret: rhs,
-                    }),
-                    "||" | "&&" => A::make_box(asts::ShortCircuitAST {
-                        oploc: loc,
-                        is_or: op == "||",
-                        lhs, rhs,
-                    }),
-                    _ => {
-                        let func = A::make_box(asts::VarAST {
-                            name: op.into(),
-                            loc,
-                        });
-                        let inter = A::make_box(asts::CallAST { func, arg: lhs });
-                        A::make_box(asts::CallAST {
-                            func: inter,
-                            arg: rhs,
-                        })
-                    }
+            .rfold(ast, |rhs, (op, loc, lhs)| match op {
+                "->" => A::make_box(asts::FunctionTypeAST {
+                    oploc: loc,
+                    arg: lhs,
+                    ret: rhs,
+                }),
+                "||" | "&&" => A::make_box(asts::ShortCircuitAST {
+                    oploc: loc,
+                    is_or: op == "||",
+                    lhs,
+                    rhs,
+                }),
+                _ => {
+                    let func = A::make_box(asts::VarAST {
+                        name: op.into(),
+                        loc,
+                    });
+                    let inter = A::make_box(asts::CallAST { func, arg: lhs });
+                    A::make_box(asts::CallAST {
+                        func: inter,
+                        arg: rhs,
+                    })
                 }
             });
         (ast, err)
@@ -340,9 +339,7 @@ where
                     return Some(Err(()));
                 }
                 let (n, loc) = match self.parse_ident(true, out) {
-                    (_, true) => {
-                        return Some(Err(()))
-                    }
+                    (_, true) => return Some(Err(())),
                     (Some(r), false) => r,
                     (None, false) => {
                         let next =
@@ -480,8 +477,14 @@ where
             return Some(Err(()));
         }
         match self.current_token() {
-            Some(Token {kind: TokenKind::Special(SpecialChar::Arrow), ..}) => self.index += 1,
-            Some(Token {kind: TokenKind::Special(SpecialChar::Backslash), ..}) => {},
+            Some(Token {
+                kind: TokenKind::Special(SpecialChar::Arrow),
+                ..
+            }) => self.index += 1,
+            Some(Token {
+                kind: TokenKind::Special(SpecialChar::Backslash),
+                ..
+            }) => {}
             _ => {
                 let err = self.exp_found("lambda arrow");
                 if self.report(err) {
@@ -489,7 +492,13 @@ where
                 }
             }
         }
-        Some(Ok(LambdaStub { bs, arg, aloc, argty, retty }))
+        Some(Ok(LambdaStub {
+            bs,
+            arg,
+            aloc,
+            argty,
+            retty,
+        }))
     }
 
     /// Parse an expression. If not `allow_extra`, give an error with extra input.
@@ -499,10 +508,15 @@ where
         mut necessary: bool,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (A::AstBox<'src>, bool) {
-        let Ok(lambdas) = std::iter::from_fn(|| self.parse_lambda(out)).collect::<Result<SmallVec<[_; 3]>, ()>>() else {
-            return (A::make_box(asts::ErrorAST {
-                loc: self.curr_loc()
-            }), true);
+        let Ok(lambdas) =
+            std::iter::from_fn(|| self.parse_lambda(out)).collect::<Result<SmallVec<[_; 3]>, ()>>()
+        else {
+            return (
+                A::make_box(asts::ErrorAST {
+                    loc: self.curr_loc(),
+                }),
+                true,
+            );
         };
         necessary |= !lambdas.is_empty();
         let mut prefixes = SmallVec::new();
@@ -515,7 +529,12 @@ where
                 err = self.report(ef);
             }
         }
-        (lambdas.into_iter().rfold(ast, LambdaStub::into_ast_boxed::<A>), err)
+        (
+            lambdas
+                .into_iter()
+                .rfold(ast, LambdaStub::into_ast_boxed::<A>),
+            err,
+        )
     }
 
     fn parse_atom(

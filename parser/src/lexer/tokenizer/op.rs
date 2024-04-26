@@ -9,11 +9,13 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             .unwrap_or(self.input.len() - self.index - 1)
             + 1;
         self.index += len;
-        let op = unsafe {
-            std::str::from_utf8_unchecked(&self.input[start..self.index])
-        };
+        let op = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
         self.tokens.push(Token {
-            kind: if op == "->" {TokenKind::Special(SpecialChar::Arrow)} else {TokenKind::InfOp(op)},
+            kind: if op == "->" {
+                TokenKind::Special(SpecialChar::Arrow)
+            } else {
+                TokenKind::InfOp(op)
+            },
             span: S::new(start, len),
         });
     }

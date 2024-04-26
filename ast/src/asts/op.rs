@@ -1,7 +1,7 @@
 use super::*;
 
 /// Short-circuiting operations *can't* be implemented as function calls because that would require
-/// that 
+/// that
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShortCircuitAST<A: Located> {
     pub oploc: A::Span,

@@ -14,7 +14,7 @@ impl<S: SpanConstruct, A: Located<Span = S>, F> Located for FrolicAST<A, F> {
         match &self.nodes[..] {
             [] => S::new(0, 0),
             [n] => n.loc(),
-            _ => self.nodes[0].loc().merge(self.nodes.last().unwrap().loc())
+            _ => self.nodes[0].loc().merge(self.nodes.last().unwrap().loc()),
         }
     }
 }

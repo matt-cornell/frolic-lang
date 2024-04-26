@@ -4,7 +4,7 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::sync::OnceLock;
 
 /// Convenience for `Debug`
-#[allow(non_camel_case_types)]
+#[allow(non_camel_case_types, clippy::upper_case_acronyms)]
 #[derive(Debug)]
 struct ROOT;
 

@@ -55,5 +55,3 @@ impl<S: Span> Located for StringLitAST<'_, S> {
         self.loc
     }
 }
-
-
