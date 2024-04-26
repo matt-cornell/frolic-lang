@@ -243,13 +243,11 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
 }
 
 #[cfg(feature = "rayon")]
-fn tokenize_impl<'src, F: Copy + Send + Sync, S: SpanConstruct + Send, E: Sync>(
+fn tokenize_impl<'src, F: Copy + Send + Sync, S: SpanConstruct + Send, E: ErrorReporter<SourcedError<F, TokenizeError<S>>> + Copy + Send + Sync>(
     input: &'src [u8],
     file: F,
     errs: E,
 ) -> Vec<Token<'src, S>>
-where
-    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 {
     const STARTS: &[u8] = b"\n\t !$%&(),.:;@~";
     dispatch_chunks(
@@ -260,9 +258,9 @@ where
                 .position(|b| STARTS.contains(b))
                 .map_or(input.len(), |i| i + offset)
         },
-        |src, offset| {
-            let mut r = &errs;
-            let mut lex = Lexer::new(src, offset, file, &mut r);
+        move |src, offset| {
+            let mut errs = errs;
+            let mut lex = Lexer::new(src, offset, file, &mut errs);
             lex.tokenize();
             lex.tokens
         },
@@ -277,14 +275,12 @@ pub fn tokenize<
     I: AsRef<[u8]> + ?Sized,
     F: Copy + Send + Sync,
     S: SpanConstruct + Send,
-    E: Sync,
+    E: ErrorReporter<SourcedError<F, TokenizeError<S>>> + Copy + Send + Sync,
 >(
     input: &'src I,
     file: F,
     errs: E,
 ) -> Vec<Token<'src, S>>
-where
-    for<'a> &'a E: ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 {
     tokenize_impl::<F, S, E>(input.as_ref(), file, errs)
 }
@@ -299,7 +295,7 @@ pub fn tokenize<
 >(
     input: &'src I,
     file: F,
-    errs: E,
+    mut errs: E,
 ) -> Vec<Token<'src, SourceSpan>> {
     let mut lex = Lexer::new(src, offset, file, &mut errs);
     lex.tokenize();
