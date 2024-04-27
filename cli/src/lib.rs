@@ -3,6 +3,7 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
 pub mod debug;
+pub mod fmt;
 
 /// Some kind of command that can be run.
 pub trait Runnable: Sized {
@@ -30,6 +31,9 @@ pub enum FrolicCli {
     #[cfg_attr(debug_assertions, command(subcommand))]
     #[cfg_attr(not(debug_assertions), command(skip))]
     Debug(debug::FrolicDebug),
+    /// Color a file, with a theme.
+    #[cfg(feature = "fmt")]
+    Color(fmt::FrolicColor),
 }
 impl Runnable for FrolicCli {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -40,6 +44,7 @@ impl Runnable for FrolicCli {
     ) -> eyre::Result<()> {
         match self {
             Self::Debug(cmd) => cmd.run(stdin, stdout, stderr),
+            Self::Color(cmd) => cmd.run(stdin, stdout, stderr),
         }
     }
 }

@@ -36,7 +36,7 @@ pub struct Source {
 #[derive(Debug, Clone, Args)]
 pub struct FrolicDebugLex {
     #[command(flatten)]
-    source: Source,
+    pub source: Source,
 }
 impl Runnable for FrolicDebugLex {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -90,10 +90,10 @@ impl Runnable for FrolicDebugLex {
 #[derive(Debug, Clone, Args)]
 pub struct FrolicDebugParse {
     #[command(flatten)]
-    source: Source,
+    pub source: Source,
     /// Parse as an expression instead of top-level
     #[arg(short, long)]
-    expr: bool,
+    pub expr: bool,
 }
 impl Runnable for FrolicDebugParse {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(

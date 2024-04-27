@@ -10,11 +10,16 @@ repository.workspace = true
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 frolic-ast = { version = "0.0.1", path = "../ast" }
+frolic-fmt = { version = "0.0.1", path = "../fmt", optional = true }
 frolic-parser = { version = "0.0.1", path = "../parser" }
-frolic-utils = { version = "0.1.0", path = "../utils" }
+frolic-utils = { version = "0.0.1", path = "../utils" }
 miette = { workspace = true, features = ["fancy"] }
+serde_json = { version = "1.0.116", optional = true }
+supports-color = { version = "3.0.0", optional = true }
 
 [features]
-default = ["rayon"]
+default = ["rayon", "fmt", "serde"]
 
+fmt = ["frolic-fmt", "supports-color"]
 rayon = ["frolic-parser/rayon"]
+serde = ["serde_json", "frolic-fmt?/serde"]
