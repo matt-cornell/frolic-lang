@@ -12,6 +12,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,

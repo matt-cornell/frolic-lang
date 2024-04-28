@@ -74,6 +74,7 @@ where
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
@@ -259,7 +260,7 @@ where
             if matches!(
                 self.current_token(),
                 Some(Token {
-                    kind: TokenKind::AmbigOp(_),
+                    kind: TokenKind::AmbigOp(_) | TokenKind::Keyword(Keyword::If),
                     ..
                 })
             ) {
@@ -288,6 +289,217 @@ where
         self.parse_fns_expr(necessary, prefixes, infixes, out)
     }
 
+    fn parse_cond_expr(
+        &mut self,
+        necessary: bool,
+        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
+        out: &mut Vec<A::AstBox<'src>>,
+    ) -> (A::AstBox<'src>, bool) {
+        if let Some(&Token {
+            kind: TokenKind::Keyword(Keyword::If),
+            span: kw,
+        }) = self.current_token()
+        {
+            self.index += 1;
+            let (cond, ret) = self.parse_level(255, true, prefixes, infixes, out);
+            if ret {
+                let loc = self.curr_loc();
+                return (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        cond,
+                        if_true: A::make_box(asts::ErrorAST { loc }),
+                        if_false: A::make_box(asts::ErrorAST { loc }),
+                    }),
+                    true,
+                );
+            }
+            if !matches!(
+                self.current_token(),
+                Some(Token {
+                    kind: TokenKind::Keyword(Keyword::Then),
+                    ..
+                })
+            ) {
+                let err = self.exp_found("'then' after condition");
+                let loc = self.curr_loc();
+                return (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        cond,
+                        if_true: A::make_box(asts::ErrorAST { loc }),
+                        if_false: A::make_box(asts::ErrorAST { loc }),
+                    }),
+                    self.report(err),
+                );
+            }
+            self.index += 1;
+            let (if_true, ret) = self.parse_level(255, true, prefixes, infixes, out);
+            if ret {
+                let loc = self.curr_loc();
+                return (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        cond,
+                        if_true,
+                        if_false: A::make_box(asts::ErrorAST { loc }),
+                    }),
+                    true,
+                );
+            }
+            if !matches!(
+                self.current_token(),
+                Some(Token {
+                    kind: TokenKind::Keyword(Keyword::Else),
+                    ..
+                })
+            ) {
+                let err = self.exp_found("'else' after condition");
+                let loc = self.curr_loc();
+                return (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        cond,
+                        if_true,
+                        if_false: A::make_box(asts::ErrorAST { loc }),
+                    }),
+                    self.report(err),
+                );
+            }
+            self.index += 1;
+            let (if_false, ret) = self.parse_level(255, true, prefixes, infixes, out);
+            return (
+                A::make_box(asts::IfElseAST {
+                    kw,
+                    cond,
+                    if_true,
+                    if_false,
+                }),
+                ret,
+            );
+        };
+        let start = self.index;
+        let (lhs, ret) = self.parse_level(11, necessary, prefixes, infixes, out);
+        if self.index == start || ret {
+            return (lhs, ret);
+        }
+        let Some(&Token {
+            kind: TokenKind::Keyword(Keyword::If),
+            span: kw,
+        }) = self.current_token()
+        else {
+            return (lhs, false);
+        };
+        self.index += 1;
+        let (cond, ret) = self.parse_level(255, true, prefixes, infixes, out);
+        if ret {
+            return (
+                A::make_box(asts::IfElseAST {
+                    kw,
+                    if_true: lhs,
+                    if_false: A::make_box(asts::ErrorAST {
+                        loc: self.curr_loc(),
+                    }),
+                    cond,
+                }),
+                true,
+            );
+        }
+        match self.current_token() {
+            Some(Token {
+                kind: TokenKind::Keyword(Keyword::Then),
+                ..
+            }) => {
+                self.index += 1;
+                let (if_true, ret) = self.parse_level(255, true, prefixes, infixes, out);
+                if ret {
+                    return (
+                        A::make_box(asts::CallAST {
+                            func: lhs,
+                            arg: A::make_box(asts::IfElseAST {
+                                kw,
+                                if_true,
+                                if_false: A::make_box(asts::ErrorAST {
+                                    loc: self.curr_loc(),
+                                }),
+                                cond,
+                            }),
+                        }),
+                        true,
+                    );
+                }
+                if !matches!(
+                    self.current_token(),
+                    Some(Token {
+                        kind: TokenKind::Keyword(Keyword::Else),
+                        ..
+                    })
+                ) {
+                    let err = self.exp_found("'else'");
+                    return (
+                        A::make_box(asts::CallAST {
+                            func: lhs,
+                            arg: A::make_box(asts::IfElseAST {
+                                kw,
+                                if_true,
+                                if_false: A::make_box(asts::ErrorAST {
+                                    loc: self.curr_loc(),
+                                }),
+                                cond,
+                            }),
+                        }),
+                        self.report(err),
+                    );
+                }
+                self.index += 1;
+                let (if_false, ret) = self.parse_level(255, true, prefixes, infixes, out);
+                (
+                    A::make_box(asts::CallAST {
+                        func: lhs,
+                        arg: A::make_box(asts::IfElseAST {
+                            kw,
+                            if_true,
+                            if_false,
+                            cond,
+                        }),
+                    }),
+                    ret,
+                )
+            }
+            Some(Token {
+                kind: TokenKind::Keyword(Keyword::Else),
+                ..
+            }) => {
+                self.index += 1;
+                let (if_false, ret) = self.parse_level(255, true, prefixes, infixes, out);
+                (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        cond,
+                        if_false,
+                        if_true: lhs,
+                    }),
+                    ret,
+                )
+            }
+            _ => {
+                let err = self.exp_found("'else' after condition");
+                return (
+                    A::make_box(asts::IfElseAST {
+                        kw,
+                        if_true: lhs,
+                        if_false: A::make_box(asts::ErrorAST {
+                            loc: self.curr_loc(),
+                        }),
+                        cond,
+                    }),
+                    self.report(err),
+                );
+            }
+        }
+    }
+
     #[inline(always)]
     fn parse_level(
         &mut self,
@@ -303,7 +515,8 @@ where
             3 => self.parse_types_expr(necessary, prefixes, infixes, out),
             4 | 5 | 7 | 8 => self.parse_lhs_expr(lvl, necessary, prefixes, infixes, out),
             6 | 9 | 10 | 11 => self.parse_rhs_expr(lvl, necessary, prefixes, infixes, out),
-            255 => self.parse_level(11, necessary, prefixes, infixes, out),
+            12 => self.parse_cond_expr(necessary, prefixes, infixes, out),
+            255 => self.parse_level(12, necessary, prefixes, infixes, out),
             _ => unreachable!(),
         }
     }
