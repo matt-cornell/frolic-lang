@@ -9,4 +9,4 @@ repository.workspace = true
 [dependencies]
 bstr.workspace = true
 frolic-utils = { version = "0.1.0", path = "../utils" }
-smallvec = "1.13.2"
+smallvec.workspace = true

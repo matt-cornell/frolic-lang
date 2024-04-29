@@ -1,5 +1,6 @@
 use super::*;
 
+/// A function parameter
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnParam<'src, A: Located> {
     pub name: Cow<'src, str>,
@@ -7,6 +8,7 @@ pub struct FnParam<'src, A: Located> {
     pub ty: Option<A>,
 }
 
+/// Either a variable or function definition. A variable is just a nullary function at this point.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LetAST<'src, A: Located> {
     pub kw: A::Span,

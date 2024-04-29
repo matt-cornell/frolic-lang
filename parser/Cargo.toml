@@ -13,7 +13,7 @@ frolic-utils = { version = "0.1.0", path = "../utils" }
 miette.workspace = true
 rayon = { version = "1.10.0", optional = true }
 smallvec.workspace = true
-strum = { version = "0.26.2", features = ["derive", "phf"] }
+strum = { version = "0.26.2", features = ["derive"] }
 thiserror.workspace = true
 unicode-ident = "1.0.12"
 

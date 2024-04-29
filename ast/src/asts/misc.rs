@@ -1,6 +1,8 @@
 use super::*;
 use std::fmt::{self, Debug, Formatter};
 
+/// A comment AST. This is kept around so that comments are kept in formatted code and to make it
+/// easier to debug the IR.
 #[derive(Clone, PartialEq)]
 pub struct CommentAST<'src, S> {
     pub comm: Cow<'src, [u8]>,
@@ -22,6 +24,8 @@ impl<S: Span> Located for CommentAST<'_, S> {
     }
 }
 
+/// AST node representative of an error. Something failed to parse, but we need to have something
+/// here.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ErrorAST<S> {
     pub loc: S,
@@ -34,19 +38,7 @@ impl<S: Span> Located for ErrorAST<S> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct VarAST<'src, S> {
-    pub name: Cow<'src, str>,
-    pub loc: S,
-}
-impl<S: Span> Located for VarAST<'_, S> {
-    type Span = S;
-
-    fn loc(&self) -> Self::Span {
-        self.loc
-    }
-}
-
+/// AST node that evaluates to `()`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NullAST<S> {
     pub loc: S,
@@ -59,15 +51,16 @@ impl<S: Span> Located for NullAST<S> {
     }
 }
 
+/// Get a variable.
 #[derive(Debug, Clone, PartialEq)]
-pub struct CallAST<A> {
-    pub func: A,
-    pub arg: A,
+pub struct VarAST<'src, S> {
+    pub name: Cow<'src, str>,
+    pub loc: S,
 }
-impl<A: Located> Located for CallAST<A> {
-    type Span = A::Span;
+impl<S: Span> Located for VarAST<'_, S> {
+    type Span = S;
 
     fn loc(&self) -> Self::Span {
-        self.func.loc().merge(self.arg.loc())
+        self.loc
     }
 }

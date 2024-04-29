@@ -3,6 +3,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
 
+/// A wrapper around a `miette::Diagnostic` that overrides the source. This is cheaper than
+/// constructing a `Report`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SourcedError<F, E> {
     pub file: F,
@@ -45,7 +47,7 @@ impl<F: Debug + SourceCode, E: Diagnostic> Diagnostic for SourcedError<F, E> {
     }
 }
 
-/// Report an error, somehow.
+/// Report an error, somehow. If we have interior mutability, implement it for a reference.
 pub trait ErrorReporter<E> {
     /// Handle the error. Return true if we should abort.
     /// If the reporter aborts, the state of the output is not guaranteed, but should be at least
@@ -70,6 +72,18 @@ where
 }
 
 impl<T, E: Into<T>> ErrorReporter<E> for Vec<T> {
+    fn report(&mut self, err: E) -> bool {
+        self.push(err.into());
+        false
+    }
+}
+impl<T, E: Into<T>> ErrorReporter<E> for boxcar::Vec<T> {
+    fn report(&mut self, err: E) -> bool {
+        self.push(err.into());
+        false
+    }
+}
+impl<T, E: Into<T>> ErrorReporter<E> for &boxcar::Vec<T> {
     fn report(&mut self, err: E) -> bool {
         self.push(err.into());
         false
