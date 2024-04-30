@@ -2,8 +2,8 @@ pub mod cbi;
 pub mod dottedname;
 pub mod errors;
 pub mod files;
-pub mod span;
 pub mod intern;
+pub mod span;
 
 pub mod prelude {
     pub use crate::cbi::CharBytesIterator;

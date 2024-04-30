@@ -1,3 +1,5 @@
+#![allow(clippy::borrowed_box)]
+
 use portable_atomic::{AtomicPtr, Ordering};
 
 /// Common trait for an intrusive linked list whose elements have a pointer to the list
@@ -14,7 +16,9 @@ pub trait LinkedList: Sized {
         unsafe {
             let ptr = Box::into_raw(elem);
             (*ptr).unlink();
-            (*ptr).parent().store(&**self as *const Self as *mut Self, Ordering::Relaxed);
+            (*ptr)
+                .parent()
+                .store(&**self as *const Self as *mut Self, Ordering::Relaxed);
             let ldef = self.first_elem().swap(ptr, Ordering::AcqRel);
             (*ptr).next_elem().store(ldef, Ordering::Release);
             if let Some(ld) = ldef.as_ref() {
@@ -29,7 +33,9 @@ pub trait LinkedList: Sized {
         unsafe {
             let ptr = Box::into_raw(elem);
             (*ptr).unlink();
-            (*ptr).parent().store(&**self as *const Self as *mut Self, Ordering::Relaxed);
+            (*ptr)
+                .parent()
+                .store(&**self as *const Self as *mut Self, Ordering::Relaxed);
             let ldef = self.last_elem().swap(ptr, Ordering::AcqRel);
             (*ptr).prev_elem().store(ldef, Ordering::Release);
             if let Some(ld) = ldef.as_ref() {
@@ -63,7 +69,10 @@ pub trait LinkedListElem: Sized {
     /// a `Box`
     fn unlink(&self) -> Option<Box<Self>> {
         let null = std::ptr::null_mut();
-        let (prev, next) = (self.prev_elem().swap(null, Ordering::Acquire), self.next_elem().swap(null, Ordering::Acquire));
+        let (prev, next) = (
+            self.prev_elem().swap(null, Ordering::Acquire),
+            self.next_elem().swap(null, Ordering::Acquire),
+        );
         let p = self.parent().swap(std::ptr::null_mut(), Ordering::Acquire);
         unsafe {
             match (prev.as_ref(), next.as_ref()) {
@@ -95,4 +104,3 @@ pub trait LinkedListElem: Sized {
         }
     }
 }
-

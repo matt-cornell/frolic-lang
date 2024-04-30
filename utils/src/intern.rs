@@ -1,5 +1,5 @@
-use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use hashbrown::HashTable;
+use parking_lot::{RwLock, RwLockUpgradableReadGuard};
 use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{BuildHasher, Hash};
@@ -11,23 +11,22 @@ pub struct Interner<T, S = ahash::RandomState> {
 }
 
 impl<T, S: BuildHasher> Interner<T, S> {
-    pub fn intern_with<Q: Hash + Eq + ?Sized, F: FnOnce() -> T>(&self, key: &Q, gen: F) -> &T where T: Borrow<Q> {
+    pub fn intern_with<Q: Hash + Eq + ?Sized, F: FnOnce() -> T>(&self, key: &Q, gen: F) -> &T
+    where
+        T: Borrow<Q>,
+    {
         let hash = self.hash.hash_one(key);
         {
             let lock = self.lookup.read();
-            if let Some(out) = lock.find(hash, |val| unsafe {
-                (**val).borrow() == key
-            }) {
-                return unsafe {&**out};
+            if let Some(out) = lock.find(hash, |val| unsafe { (**val).borrow() == key }) {
+                return unsafe { &**out };
             }
         }
         {
             let lock = self.lookup.upgradable_read();
-            // double-check 
-            if let Some(out) = lock.find(hash, |val| unsafe {
-                (**val).borrow() == key
-            }) {
-                unsafe {&**out}
+            // double-check
+            if let Some(out) = lock.find(hash, |val| unsafe { (**val).borrow() == key }) {
+                unsafe { &**out }
             } else {
                 let mut lock = RwLockUpgradableReadGuard::upgrade(lock);
                 let idx = self.storage.push(gen());
@@ -37,26 +36,28 @@ impl<T, S: BuildHasher> Interner<T, S> {
             }
         }
     }
-    pub fn intern_ref<Q: Hash + Eq + ToOwned<Owned = T> + ?Sized>(&self, key: &Q) -> &T where T: Borrow<Q> {
+    pub fn intern_ref<Q: Hash + Eq + ToOwned<Owned = T> + ?Sized>(&self, key: &Q) -> &T
+    where
+        T: Borrow<Q>,
+    {
         self.intern_with(key, || key.to_owned())
     }
-    pub fn intern(&self, key: T) -> &T where T: Hash + Eq {
+    pub fn intern(&self, key: T) -> &T
+    where
+        T: Hash + Eq,
+    {
         let hash = self.hash.hash_one(&key);
         {
             let lock = self.lookup.read();
-            if let Some(out) = lock.find(hash, |val| unsafe {
-                **val == key
-            }) {
-                return unsafe {&**out};
+            if let Some(out) = lock.find(hash, |val| unsafe { **val == key }) {
+                return unsafe { &**out };
             }
         }
         {
             let lock = self.lookup.upgradable_read();
-            // double-check 
-            if let Some(out) = lock.find(hash, |val| unsafe {
-                **val == key
-            }) {
-                unsafe {&**out}
+            // double-check
+            if let Some(out) = lock.find(hash, |val| unsafe { **val == key }) {
+                unsafe { &**out }
             } else {
                 let mut lock = RwLockUpgradableReadGuard::upgrade(lock);
                 let idx = self.storage.push(key);
