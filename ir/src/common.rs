@@ -1,9 +1,35 @@
 #![allow(clippy::borrowed_box)]
 
 use portable_atomic::{AtomicPtr, Ordering};
+use std::mem::ManuallyDrop;
+use std::ptr::NonNull;
+use std::marker::PhantomData;
 
-/// Common trait for an intrusive linked list whose elements have a pointer to the list
-pub trait LinkedList: Sized {
+/// Type used to signify that a value is stored on the heap but managed elsewhere.
+pub type Owned<T> = ManuallyDrop<Box<T>>;
+
+/// An iterator over elements in a linked list.
+#[derive(Debug)]
+pub struct Iter<'a, T> {
+    inner: Option<NonNull<T>>,
+    _phantom: PhantomData<&'a ()>,
+}
+impl<'a, T: LinkedListElem + 'a> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let elem = self.inner?.as_ref();
+            self.inner = NonNull::new(elem.next_elem().load(Ordering::Relaxed));
+            Some(elem)
+        }
+    }
+}
+
+/// Common trait for an intrusive linked list, elements also have a pointer to this list.
+/// ## Safety
+/// Don't mess with the element pointers if you don't know what you're doing.
+pub unsafe trait LinkedList: Sized {
     type Elem: LinkedListElem<Parent = Self>;
 
     /// Get the pointer to the first element
@@ -12,7 +38,7 @@ pub trait LinkedList: Sized {
     fn last_elem(&self) -> &AtomicPtr<Self::Elem>;
 
     /// Push an element to the front of the list
-    fn prepend(self: &Box<Self>, elem: Box<Self::Elem>) {
+    fn prepend(self: &Box<Self>, elem: Box<Self::Elem>) -> Owned<Self::Elem> {
         unsafe {
             let ptr = Box::into_raw(elem);
             (*ptr).unlink();
@@ -26,10 +52,11 @@ pub trait LinkedList: Sized {
             } else {
                 self.last_elem().store(ptr, Ordering::Release);
             }
+            ManuallyDrop::new(Box::from_raw(ptr))
         }
     }
     /// Push an element to the back of the list
-    fn append(self: &Box<Self>, elem: Box<Self::Elem>) {
+    fn append(self: &Box<Self>, elem: Box<Self::Elem>) -> Owned<Self::Elem> {
         unsafe {
             let ptr = Box::into_raw(elem);
             (*ptr).unlink();
@@ -43,10 +70,18 @@ pub trait LinkedList: Sized {
             } else {
                 self.first_elem().store(ptr, Ordering::Release);
             }
+            ManuallyDrop::new(Box::from_raw(ptr))
+        }
+    }
+    fn iter(&self) -> Iter<Self::Elem> {
+        Iter {
+            inner: NonNull::new(self.first_elem().load(Ordering::Relaxed)),
+            _phantom: PhantomData,
         }
     }
     /// Clear the list. This takes mutable access because it invalidates every element pointer.
     fn clear(&mut self) {
+        self.iter().for_each(LinkedListElem::prep_drop);
         unsafe {
             let null = std::ptr::null_mut();
             self.last_elem().store(null, Ordering::Relaxed);
@@ -58,12 +93,17 @@ pub trait LinkedList: Sized {
     }
 }
 /// Trait for elements of an intrusive linked list with a pointer to the list.
-pub trait LinkedListElem: Sized {
+/// ## Safety
+/// Don't mess with the pointers if you don't know what you're doing.
+pub unsafe trait LinkedListElem: Sized {
     type Parent: LinkedList<Elem = Self>;
 
     fn parent(&self) -> &AtomicPtr<Self::Parent>;
     fn prev_elem(&self) -> &AtomicPtr<Self>;
     fn next_elem(&self) -> &AtomicPtr<Self>;
+
+    /// Call this before dropping.
+    fn prep_drop(&self) {}
 
     /// Unlink self from a linked list. If we were previously in a linked list, take ownership with
     /// a `Box`

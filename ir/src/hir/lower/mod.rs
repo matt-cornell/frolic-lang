@@ -2,10 +2,17 @@ use super::*;
 use error::HirError;
 use frolic_ast::prelude::*;
 
+mod defs;
+mod flow;
+mod func;
+mod groups;
+mod lits;
+mod misc;
+mod op;
+
 /// Global context passed to HIR generation. This is what's mutated (internally).
 pub struct GlobalContext<'a, 'src, S> {
     pub module: Module<'src, S>,
-    pub builder: Builder<'src, S>,
     /// Note that this should probably internally use a `SourcedError`. In addition, a cell or
     /// mutex may be used.
     #[cfg(not(feature = "rayon"))]
@@ -16,66 +23,65 @@ pub struct GlobalContext<'a, 'src, S> {
     pub report: &'a (dyn Fn(HirError) -> bool + Send + Sync),
 }
 
-/// Store the scope as a linked list to avoid allocations.
-#[derive(Debug, Clone, Copy)]
-pub struct ScopeSeg<'a> {
-    frag: &'a str,
-    prev: Option<&'a Self>,
+#[derive(Debug, Clone, PartialEq)]
+enum RestoreInner<'src> {
+    Index(usize),
+    Path(Vec<Cow<'src, str>>),
+}
+
+/// A scope to restore to.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RestorePoint<'src> {
+    inner: RestoreInner<'src>,
 }
 
 /// Local context. This stores local qualities like scope.
 #[derive(Debug, Clone)]
-pub struct LocalContext<'a, 'src, S> {
-    scope: ScopeSeg<'a>,
-    scope_len: usize,
-    phantom: std::marker::PhantomData<&'src S>,
+pub struct LocalContext<'src, S> {
+    pub scope: Vec<Cow<'src, str>>,
+    pub builder: Builder<'src, S>,
 }
-impl<'a, 'src, S> LocalContext<'a, 'src, S> {
-    pub fn new(scope: &'a str) -> Self {
+impl<'src, S> LocalContext<'src, S> {
+    pub const fn new() -> Self {
         Self {
-            scope: ScopeSeg {
-                frag: scope,
-                prev: None,
-            },
-            scope_len: scope.len(),
-            phantom: std::marker::PhantomData,
+            scope: Vec::new(),
+            builder: Builder::new(),
         }
     }
-    /// Create a new local context with an appended scope.
-    pub fn with_new_scope<'b>(&'b self, scope: &'b str) -> LocalContext<'b, 'src, S> {
-        LocalContext {
-            scope: ScopeSeg {
-                frag: scope,
-                prev: Some(&self.scope),
-            },
-            scope_len: self.scope_len + scope.len() + 1,
-            phantom: std::marker::PhantomData,
+    pub fn push_scope<I: IntoIterator<Item = impl Into<Cow<'src, str>>>>(
+        &mut self,
+        scope: I,
+        global: bool,
+    ) -> RestorePoint<'src> {
+        if global {
+            let old =
+                std::mem::replace(&mut self.scope, scope.into_iter().map(Into::into).collect());
+            RestorePoint {
+                inner: RestoreInner::Path(old),
+            }
+        } else {
+            let idx = self.scope.len();
+            self.scope.extend(scope.into_iter().map(Into::into));
+            RestorePoint {
+                inner: RestoreInner::Index(idx),
+            }
         }
     }
-    /// Convert the scope into a string.
-    pub fn scope_to_str(&self) -> String {
-        let mut out = vec![0u8; self.scope_len];
-        let mut offset = self.scope_len;
-        let mut seg = Some(&self.scope);
-        while let Some(&ScopeSeg { frag, prev }) = seg {
-            seg = prev;
-            let old = offset;
-            offset -= frag.len();
-            out[offset..old].copy_from_slice(frag.as_bytes());
-            offset -= 1;
-            out[offset] = b'.';
+    pub fn restore_scope(&mut self, saved: RestorePoint<'src>) {
+        match saved.inner {
+            RestoreInner::Index(idx) => self.scope.truncate(idx),
+            RestoreInner::Path(path) => self.scope = path,
         }
-        unsafe { String::from_utf8_unchecked(out) }
     }
 }
 
 /// An AST node that can be lowered to HIR.
-pub trait ToHir<'src, S>: Located {
+pub trait ToHir<'src>: Located {
     /// Definition hoisting pass override, defaults to doing nothing.
     fn hoist_pass(
         &self,
-        _glb: &GlobalContext<'_, 'src, S>,
-        _loc: &mut LocalContext<'_, 'src, S>,
+        _glb: &GlobalContext<'_, 'src, Self::Span>,
+        _loc: &mut LocalContext<'src, Self::Span>,
     ) -> bool {
         false
     }
@@ -83,26 +89,26 @@ pub trait ToHir<'src, S>: Located {
     /// according to the handler.
     /// All state changes must be made to the global context, the local must be in the same state
     /// as it was to start.
-    fn to_hir(&self, glb: &GlobalContext<'_, 'src, S>, loc: &mut LocalContext<'_, 'src, S>)
-        -> bool;
+    fn to_hir(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> (Option<Owned<Value<'src, Self::Span>>>, bool);
 }
 
 /// Lower a top-level AST. For an expression, use `ToHir` directly.
 #[cfg(not(feature = "rayon"))]
 pub fn lower_ast<
     'src,
-    S: Span,
-    A: ToHir<'src, S, Span = S> + 'src,
+    A: ToHir<'src> + 'src,
     F: Copy,
     E: ErrorReporter<SourcedError<F, HirError>> + Copy,
 >(
     ast: &asts::FrolicAST<A, F>,
-    module: Option<Module<'src, S>>,
+    module: Option<Module<'src, A::Span>>,
     errs: E,
-    scope: &str,
-) -> Module<'src, S> {
+) -> Module<'src, A::Span> {
     let module = module.unwrap_or(Module::new());
-    let builder = Builder::new();
     let report = |error| {
         let mut errs = errs;
         errs.report(SourcedError {
@@ -112,12 +118,11 @@ pub fn lower_ast<
     };
     let global = GlobalContext {
         module,
-        builder,
         report: &report,
     };
-    let mut local = LocalContext::new(scope);
+    let mut local = LocalContext::new();
     let _ = ast.nodes.iter().any(|a| a.hoist_pass(&global, &mut local));
-    let _ = ast.nodes.iter().any(|a| a.to_hir(&global, &mut local));
+    let _ = ast.nodes.iter().any(|a| a.to_hir(&global, &mut local).1);
     global.module
 }
 
@@ -126,19 +131,17 @@ pub fn lower_ast<
 pub fn lower_ast<
     'src,
     S: Span + Sync,
-    A: ToHir<'src, S, Span = S> + Send + Sync + 'src,
+    A: ToHir<'src> + Send + Sync + 'src,
     F: Copy + Sync,
     E: ErrorReporter<SourcedError<F, HirError>> + Copy + Sync,
 >(
     ast: &asts::FrolicAST<A, F>,
-    module: Option<Module<'src, S>>,
+    module: Option<Module<'src, A::Span>>,
     errs: E,
-    scope: &str,
-) -> Module<'src, S> {
+) -> Module<'src, A::Span> {
     use rayon::prelude::*;
     use std::cell::RefCell;
     let module = module.unwrap_or(Module::new());
-    let builder = Builder::new();
     let report = |error| {
         let mut errs = errs;
         errs.report(SourcedError {
@@ -148,10 +151,9 @@ pub fn lower_ast<
     };
     let global = GlobalContext {
         module,
-        builder,
         report: &report,
     };
-    let local = LocalContext::new(scope);
+    let local = LocalContext::new();
     let tl_local = thread_local::ThreadLocal::new();
     let _ = ast.nodes.par_iter().any(|a| {
         a.hoist_pass(
@@ -164,6 +166,7 @@ pub fn lower_ast<
             &global,
             &mut *tl_local.get_or(|| RefCell::new(local.clone())).borrow_mut(),
         )
+        .1
     });
     global.module
 }

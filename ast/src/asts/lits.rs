@@ -46,7 +46,7 @@ impl<S: Span> Located for CharLitAST<S> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StringLitAST<'src, S> {
     pub loc: S,
-    pub val: Cow<'src, str>,
+    pub val: Cow<'src, [u8]>,
 }
 impl<S: Span> Located for StringLitAST<'_, S> {
     type Span = S;
