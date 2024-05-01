@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
 use std::mem::ManuallyDrop;
 
-pub mod disp;
+mod disp;
 pub mod error;
 pub mod lower;
 
@@ -27,6 +27,11 @@ impl<'src, S> Module<'src, S> {
     /// Convenience method to construct a new `Box` directly.
     pub fn new_box() -> Box<Self> {
         Box::new(Self::new())
+    }
+}
+impl<S> Default for Module<'_, S> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 impl<S> Drop for Module<'_, S> {
@@ -89,7 +94,8 @@ impl<'src, S> Definition<'src, S> {
 }
 impl<S> Drop for Definition<'_, S> {
     fn drop(&mut self) {
-        assert_eq!(*self.refs.get_mut(), 0, "dropped definition with refs!");
+        let refs = *self.refs.get_mut();
+        assert_eq!(refs, 0, "dropped definition ({self:p}) with refs!");
         self.clear();
     }
 }
@@ -158,7 +164,8 @@ impl<'src, S> Block<'src, S> {
 }
 impl<S> Drop for Block<'_, S> {
     fn drop(&mut self) {
-        assert_eq!(*self.refs.get_mut(), 0, "dropped block with refs!");
+        let refs = *self.refs.get_mut();
+        assert_eq!(refs, 0, "dropped block ({self:p}) with refs!");
         self.clear();
     }
 }
@@ -508,11 +515,15 @@ unsafe impl<'src, S> LinkedListElem for Value<'src, S> {
     fn next_elem(&self) -> &AtomicPtr<Self> {
         &self.next_val
     }
+    fn prep_drop(&self) {
+        self.prep_drop();
+    }
 }
 impl<S> Drop for Value<'_, S> {
     fn drop(&mut self) {
         self.prep_drop();
-        assert_eq!(*self.refs.get_mut(), 0, "dropped value with refs!");
+        let refs = *self.refs.get_mut();
+        assert_eq!(refs, 0, "dropped value ({self:p}) with refs!");
     }
 }
 

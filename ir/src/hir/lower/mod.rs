@@ -1,4 +1,6 @@
 use super::*;
+use std::rc::Rc;
+use std::sync::Arc;
 use error::HirError;
 use frolic_ast::prelude::*;
 
@@ -12,7 +14,7 @@ mod op;
 
 /// Global context passed to HIR generation. This is what's mutated (internally).
 pub struct GlobalContext<'a, 'src, S> {
-    pub module: Module<'src, S>,
+    pub module: Box<Module<'src, S>>,
     /// Note that this should probably internally use a `SourcedError`. In addition, a cell or
     /// mutex may be used.
     #[cfg(not(feature = "rayon"))]
@@ -95,7 +97,57 @@ pub trait ToHir<'src>: Located {
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool);
 }
+impl<'src, A: ToHir<'src> + ?Sized> ToHir<'src> for Box<A> {
+    fn hoist_pass(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> bool {
+        A::hoist_pass(self, glb, loc)
+    }
 
+    fn to_hir(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
+        A::to_hir(self, glb, loc)
+    }
+}
+impl<'src, A: ToHir<'src> + ?Sized> ToHir<'src> for Rc<A> {
+    fn hoist_pass(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> bool {
+        A::hoist_pass(self, glb, loc)
+    }
+
+    fn to_hir(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
+        A::to_hir(self, glb, loc)
+    }
+}
+impl<'src, A: ToHir<'src> + ?Sized> ToHir<'src> for Arc<A> {
+    fn hoist_pass(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> bool {
+        A::hoist_pass(self, glb, loc)
+    }
+
+    fn to_hir(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
+        A::to_hir(self, glb, loc)
+    }
+}
 /// Lower a top-level AST. For an expression, use `ToHir` directly.
 #[cfg(not(feature = "rayon"))]
 pub fn lower_ast<
@@ -105,10 +157,10 @@ pub fn lower_ast<
     E: ErrorReporter<SourcedError<F, HirError>> + Copy,
 >(
     ast: &asts::FrolicAST<A, F>,
-    module: Option<Module<'src, A::Span>>,
+    module: Option<Box<Module<'src, A::Span>>>,
     errs: E,
-) -> Module<'src, A::Span> {
-    let module = module.unwrap_or(Module::new());
+) -> Box<Module<'src, A::Span>> {
+    let module = module.unwrap_or_default();
     let report = |error| {
         let mut errs = errs;
         errs.report(SourcedError {
@@ -130,18 +182,17 @@ pub fn lower_ast<
 #[cfg(feature = "rayon")]
 pub fn lower_ast<
     'src,
-    S: Span + Sync,
     A: ToHir<'src> + Send + Sync + 'src,
     F: Copy + Sync,
     E: ErrorReporter<SourcedError<F, HirError>> + Copy + Sync,
 >(
     ast: &asts::FrolicAST<A, F>,
-    module: Option<Module<'src, A::Span>>,
+    module: Option<Box<Module<'src, A::Span>>>,
     errs: E,
-) -> Module<'src, A::Span> {
+) -> Box<Module<'src, A::Span>> {
     use rayon::prelude::*;
     use std::cell::RefCell;
-    let module = module.unwrap_or(Module::new());
+    let module = module.unwrap_or_default();
     let report = |error| {
         let mut errs = errs;
         errs.report(SourcedError {

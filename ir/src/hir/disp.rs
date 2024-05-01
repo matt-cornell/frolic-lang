@@ -1,9 +1,12 @@
 use super::*;
 use std::fmt::Display;
 
+const PTR_WIDTH: usize = 6;
+const PTR_MASK: usize = (1 << PTR_WIDTH * 4) - 1;
+
 impl<S> Display for Value<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "%{{{}:{self:p}}}", self.name)?;
+        write!(f, "%{{{}:{:0>PTR_WIDTH$x}}}", self.name, self as *const _ as usize & PTR_MASK)?;
         if !f.alternate() {
             f.write_str(" = ")?;
             if self.dropped.load(Ordering::Relaxed) {
@@ -46,7 +49,7 @@ impl<S> Display for Value<'_, S> {
 }
 impl<S> Display for Block<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "${{{self:p}}}")?;
+        write!(f, "${{{:0>PTR_WIDTH$x}}}", self as *const _ as usize & PTR_MASK)?;
         if !f.alternate() {
             f.write_str(":\n")?;
             let mut p = self.first_val.load(Ordering::Relaxed);
@@ -61,12 +64,12 @@ impl<S> Display for Block<'_, S> {
 impl<S> Display for Definition<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(name) = &self.name {
-            write!(f, "@{{{name}:{self:p}}}")?;
+            write!(f, "@{{{name}:{:0>PTR_WIDTH$x}}}", self as *const _ as usize & PTR_MASK)?;
         } else {
-            write!(f, "@{{{self:p}}}")?;
+            write!(f, "@{{{:0>PTR_WIDTH$x}}}", self as *const _ as usize & PTR_MASK)?;
         }
         if !f.alternate() {
-            f.write_str(" {")?;
+            f.write_str(" {\n")?;
             let mut p = self.first_blk.load(Ordering::Relaxed);
             while let Some(r) = unsafe { p.as_ref() } {
                 p = r.next_blk.load(Ordering::Relaxed);

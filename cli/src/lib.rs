@@ -1,9 +1,29 @@
+#![feature(unsize)]
+
 use clap::{Args, Parser, Subcommand};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use std::marker::PhantomData;
+use frolic_utils::prelude::*;
+use frolic_parser::prelude::*;
+use frolic_ir::prelude::*;
 
 pub mod debug;
 
+pub struct HirAsts<'src, S>(PhantomData<fn () -> &'src S>);
+impl<S> HirAsts<'_, S> {
+    pub const fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+impl<'src, S: Span + 'static> AstDefs for HirAsts<'src, S> {
+    type AstTrait<'a> = dyn ToHir<'src, Span = S> + Send + Sync + 'a where Self: 'a;
+    type AstBox<'a> = Box<dyn ToHir<'src, Span = S> + Send + Sync + 'a> where Self: 'a;
+
+    fn make_box<'a, T: std::marker::Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a> where Self: 'a {
+        Box::new(val) as _
+    }
+}
 /// Some kind of command that can be run.
 pub trait Runnable: Sized {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(

@@ -1,7 +1,7 @@
 use super::*;
 use smallvec::smallvec;
 
-impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+impl<'src, A: AstDefs + 'src, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
     A::AstBox<'src>: Located<Span = S>,
     asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,

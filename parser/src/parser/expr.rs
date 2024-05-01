@@ -54,7 +54,7 @@ impl<'src, A: Located> LambdaStub<'src, A> {
         }
     }
     /// allows for a more functional solution
-    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A>>(body: A, this: Self) -> D::AstBox<'src>
+    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A> + 'src>(body: A, this: Self) -> D::AstBox<'src>
     where
         asts::LambdaAST<'src, A>: Unsize<D::AstTrait<'src>>,
         A: 'src,
@@ -63,7 +63,7 @@ impl<'src, A: Located> LambdaStub<'src, A> {
     }
 }
 
-impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+impl<'src, A: AstDefs + 'src, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
     A::AstBox<'src>: Located<Span = S>,
     asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,

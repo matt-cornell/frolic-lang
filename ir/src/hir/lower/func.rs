@@ -27,3 +27,31 @@ impl<'src, A: ToHir<'src>> ToHir<'src> for asts::CallAST<A> {
         }
     }
 }
+impl<'src, A: ToHir<'src>> ToHir<'src> for asts::LambdaAST<'src, A> {
+    fn to_hir(
+        &self,
+        glb: &GlobalContext<'_, 'src, Self::Span>,
+        loc: &mut LocalContext<'src, Self::Span>,
+    ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
+        let span = self.loc();
+        let def = Box::new(Definition::new(None));
+        let blk = def.append_new_block();
+        let res = loc.push_scope(
+            [format!("lambda@{}..{}", span.offset(), span.offset() + span.len())],
+            false,
+        );
+        let old = loc.builder.get_pos();
+        loc.builder.position_at(&blk);
+        let (_body, ret) = self.body.to_hir(glb, loc);
+        loc.restore_scope(res);
+        let def = glb.module.append(def);
+        let val = if let Some(old) = old {
+            loc.builder.position_at(&old);
+            Some(loc.builder.append(Box::new(Value::function(&def, span, "lambda"))))
+        } else {
+            loc.builder.clear_pos();
+            None
+        };
+        (val, ret)
+    }
+}

@@ -17,7 +17,7 @@ struct Parser<'src, 'a, A, F, S: Span> {
     errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
     _asts: PhantomData<A>,
 }
-impl<'src, 'a, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
+impl<'src, 'a, A: AstDefs + 'src, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
 where
     A::AstBox<'src>: Located<Span = S>,
     asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
@@ -307,7 +307,7 @@ where
 }
 pub fn parse_expr<
     'src,
-    A: AstDefs,
+    A: AstDefs + 'src,
     F: Copy,
     S: SpanConstruct,
     E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
@@ -338,7 +338,7 @@ where
 }
 pub fn parse_tl<
     'src,
-    A: AstDefs,
+    A: AstDefs + 'src,
     F: Copy,
     S: SpanConstruct,
     E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,

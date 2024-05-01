@@ -6,6 +6,8 @@ pub enum FrolicDebug {
     Lex(FrolicDebugLex),
     /// Parse the input code, printing out the AST.
     Parse(FrolicDebugParse),
+    /// Parse the input code, then lower it to HIR.
+    Hir(FrolicDebugHir),
 }
 impl Runnable for FrolicDebug {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -17,6 +19,7 @@ impl Runnable for FrolicDebug {
         match self {
             Self::Lex(cmd) => cmd.run(stdin, stdout, stderr),
             Self::Parse(cmd) => cmd.run(stdin, stdout, stderr),
+            Self::Hir(cmd) => cmd.run(stdin, stdout, stderr),
         }
     }
 }
@@ -143,6 +146,64 @@ impl Runnable for FrolicDebugParse {
             let ast = parse_tl(&toks, file, &errs, DebugAsts::new());
             write!(stdout, "{ast:#?}")?;
         }
+        errs.into_inner().unwrap().into_result()?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct FrolicDebugHir {
+    #[command(flatten)]
+    source: Source,
+}
+impl Runnable for FrolicDebugHir {
+    fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
+        self,
+        _stdin: I,
+        mut stdout: O,
+        stderr: E,
+    ) -> eyre::Result<()> {
+        use frolic_parser::prelude::*;
+        use frolic_utils::prelude::*;
+        use frolic_ir::prelude::*;
+        use std::sync::Mutex;
+
+        let errs = Mutex::new(DiagnosticPrint::new(
+            stderr,
+            miette::GraphicalReportHandler::new(),
+        ));
+
+        let (file, toks): (_, Vec<Token<PrettySpan>>) = match self.source {
+            Source {
+                code: Some(code),
+                path: None,
+            } => {
+                let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
+                let toks = tokenize(file.contents(), file, &errs);
+                (file, toks)
+            }
+            Source {
+                code: None,
+                path: Some(path),
+            } => {
+                let code = std::fs::read(&path)?;
+                let file = FILE_REGISTRY.add_file(
+                    PackageId::ROOT,
+                    path.into_os_string().to_string_lossy(),
+                    code,
+                );
+                let toks = tokenize(file.contents(), file, &errs);
+                (file, toks)
+            }
+            _ => panic!("exactly one of `code` and `path` should be set!"),
+        };
+
+        let ast = parse_tl(&toks, file, &errs, HirAsts::new());
+        let hir = lower_ast(&ast, None, &errs);
+
+        write!(stdout, "{hir}")?;
+
         errs.into_inner().unwrap().into_result()?;
 
         Ok(())
