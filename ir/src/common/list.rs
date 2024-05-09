@@ -1,12 +1,9 @@
 #![allow(clippy::borrowed_box)]
 
-use portable_atomic::{AtomicPtr, Ordering};
-use std::mem::ManuallyDrop;
-use std::ptr::NonNull;
+use super::owned::Owned;
+use portable_atomic::{AtomicPtr, Ordering, fence};
 use std::marker::PhantomData;
-
-/// Type used to signify that a value is stored on the heap but managed elsewhere.
-pub type Owned<T> = ManuallyDrop<Box<T>>;
+use std::ptr::NonNull;
 
 /// An iterator over elements in a linked list.
 #[derive(Debug)]
@@ -20,6 +17,23 @@ impl<'a, T: LinkedListElem + 'a> Iterator for Iter<'a, T> {
     fn next(&mut self) -> Option<Self::Item> {
         unsafe {
             let elem = self.inner?.as_ref();
+            self.inner = NonNull::new(elem.next_elem().load(Ordering::Relaxed));
+            Some(elem)
+        }
+    }
+}
+/// A mutable iterator over elements in a linked list.
+#[derive(Debug)]
+pub struct IterMut<'a, T> {
+    inner: Option<NonNull<T>>,
+    _phantom: PhantomData<&'a ()>,
+}
+impl<'a, T: LinkedListElem + 'a> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            let elem = self.inner?.as_mut();
             self.inner = NonNull::new(elem.next_elem().load(Ordering::Relaxed));
             Some(elem)
         }
@@ -52,7 +66,7 @@ pub unsafe trait LinkedList: Sized {
             } else {
                 self.last_elem().store(ptr, Ordering::Release);
             }
-            ManuallyDrop::new(Box::from_raw(ptr))
+            Owned::from_raw(ptr)
         }
     }
     /// Push an element to the back of the list
@@ -70,7 +84,7 @@ pub unsafe trait LinkedList: Sized {
             } else {
                 self.first_elem().store(ptr, Ordering::Release);
             }
-            ManuallyDrop::new(Box::from_raw(ptr))
+            Owned::from_raw(ptr)
         }
     }
     fn iter(&self) -> Iter<Self::Elem> {
@@ -79,15 +93,23 @@ pub unsafe trait LinkedList: Sized {
             _phantom: PhantomData,
         }
     }
+    fn iter_mut(&mut self) -> IterMut<Self::Elem> {
+        IterMut {
+            inner: NonNull::new(self.first_elem().load(Ordering::Relaxed)),
+            _phantom: PhantomData,
+        }
+    }
+
     /// Clear the list. This takes mutable access because it invalidates every element pointer.
     fn clear(&mut self) {
-        self.iter().for_each(LinkedListElem::prep_drop);
+        self.iter_mut().for_each(LinkedListElem::prep_drop);
+        fence(Ordering::SeqCst);
         unsafe {
             let null = std::ptr::null_mut();
             self.last_elem().store(null, Ordering::Relaxed);
             let mut ptr = self.first_elem().swap(null, Ordering::Relaxed);
             while !ptr.is_null() {
-                ptr = Box::from_raw(ptr).next_elem().load(Ordering::Relaxed);
+                ptr = (*ptr).next_elem().load(Ordering::Relaxed);
             }
         }
     }
@@ -103,7 +125,7 @@ pub unsafe trait LinkedListElem: Sized {
     fn next_elem(&self) -> &AtomicPtr<Self>;
 
     /// Call this before dropping.
-    fn prep_drop(&self) {}
+    fn prep_drop(&mut self) {}
 
     /// Unlink self from a linked list. If we were previously in a linked list, take ownership with
     /// a `Box`

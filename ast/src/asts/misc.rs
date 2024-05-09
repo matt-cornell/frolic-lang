@@ -55,6 +55,7 @@ impl<S: Span> Located for NullAST<S> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarAST<'src, S> {
     pub name: Cow<'src, str>,
+    pub global: Option<S>,
     pub loc: S,
 }
 impl<S: Span> Located for VarAST<'_, S> {

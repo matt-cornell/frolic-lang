@@ -1,43 +1,73 @@
 use super::*;
 
-impl<'src, S: Span> ToHir<'src> for asts::CommentAST<'src, S> {
+impl<'src, F, S: Span> ToHir<'src, F> for asts::CommentAST<'src, S> {
     fn to_hir(
         &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span>,
+        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
-        loc.builder.append(Box::new(Value::comment(self.comm.clone(), self.loc, "")));
+        loc.builder
+            .append(Box::new(Value::comment(self.comm.clone(), self.loc, "")));
         (None, false)
     }
 }
 
-impl<'src, S: Span> ToHir<'src> for asts::ErrorAST<S> {
+impl<'src, F, S: Span> ToHir<'src, F> for asts::ErrorAST<S> {
     fn to_hir(
         &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span>,
+        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
-        (Some(loc.builder.append(Box::new(Value::error(self.loc, "")))), false)
+        (
+            Some(loc.builder.append(Box::new(Value::error(self.loc, "")))),
+            false,
+        )
     }
 }
 
-impl<'src, S: Span> ToHir<'src> for asts::NullAST<S> {
+impl<'src, F, S: Span> ToHir<'src, F> for asts::NullAST<S> {
     fn to_hir(
         &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span>,
+        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
-        (Some(loc.builder.append(Box::new(Value::null(self.loc, "")))), false)
+        (
+            Some(loc.builder.append(Box::new(Value::null(self.loc, "")))),
+            false,
+        )
     }
 }
 
-impl<'src, S: Span> ToHir<'src> for asts::VarAST<'src, S> {
+impl<'src, F, S: Span> ToHir<'src, F> for asts::VarAST<'src, S> {
     fn to_hir(
         &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span>,
-        _loc: &mut LocalContext<'src, Self::Span>,
+        glb: &GlobalContext<'_, 'src, Self::Span, F>,
+        loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
-        // TODO
-        (None, false)
+        if self.global.is_none() {
+            if let Some(sym) = loc.symbols.get(&*self.name) {
+                return (Some(sym.value.clone()), false);
+            }
+        }
+        if loc.global_scope.get(&*self.name).is_some() {
+            return (
+                Some(loc.builder.append(Box::new(Value::uglobal(
+                    format!(".{}", self.name).into(),
+                    self.loc,
+                    self.name.clone().into_owned(),
+                )))),
+                false,
+            );
+        }
+        (
+            Some(loc.builder.append(Box::new(Value::error(
+                self.loc,
+                self.name.clone().into_owned(),
+            )))),
+            (glb.report)(HirError::UnresolvedVariable {
+                name: self.name.clone(),
+                span: self.loc,
+            }),
+        )
     }
 }

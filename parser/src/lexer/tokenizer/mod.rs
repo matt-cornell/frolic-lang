@@ -296,8 +296,8 @@ pub fn tokenize<
     input: &I,
     file: F,
     mut errs: E,
-) -> Vec<Token<SourceSpan>> {
-    let mut lex = Lexer::new(src, offset, file, &mut errs);
+) -> Vec<Token<S>> {
+    let mut lex = Lexer::new(input.as_ref(), 0, file, &mut errs);
     lex.tokenize();
     lex.tokens
 }

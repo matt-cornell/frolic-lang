@@ -1,9 +1,9 @@
 use super::*;
 
-impl<'src, A: ToHir<'src>> ToHir<'src> for asts::CallAST<A> {
+impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::CallAST<A> {
     fn to_hir(
         &self,
-        glb: &GlobalContext<'_, 'src, Self::Span>,
+        glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         let (func, ret) = self.func.to_hir(glb, loc);
@@ -27,17 +27,21 @@ impl<'src, A: ToHir<'src>> ToHir<'src> for asts::CallAST<A> {
         }
     }
 }
-impl<'src, A: ToHir<'src>> ToHir<'src> for asts::LambdaAST<'src, A> {
+impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::LambdaAST<'src, A> {
     fn to_hir(
         &self,
-        glb: &GlobalContext<'_, 'src, Self::Span>,
+        glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         let span = self.loc();
         let def = Box::new(Definition::new(None));
         let blk = def.append_new_block();
         let res = loc.push_scope(
-            [format!("lambda@{}..{}", span.offset(), span.offset() + span.len())],
+            [format!(
+                "lambda@{}..{}",
+                span.offset(),
+                span.offset() + span.len()
+            )],
             false,
         );
         let old = loc.builder.get_pos();
@@ -47,7 +51,10 @@ impl<'src, A: ToHir<'src>> ToHir<'src> for asts::LambdaAST<'src, A> {
         let def = glb.module.append(def);
         let val = if let Some(old) = old {
             loc.builder.position_at(&old);
-            Some(loc.builder.append(Box::new(Value::function(&def, span, "lambda"))))
+            Some(
+                loc.builder
+                    .append(Box::new(Value::rglobal(&def, span, "lambda"))),
+            )
         } else {
             loc.builder.clear_pos();
             None

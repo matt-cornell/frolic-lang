@@ -1,11 +1,11 @@
 #![allow(clippy::borrowed_box)]
 
-use crate::common::*;
+use crate::common::list::*;
+use crate::common::owned::*;
 use frolic_utils::prelude::*;
 use portable_atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::borrow::Cow;
 use std::fmt::{self, Debug, Formatter};
-use std::mem::ManuallyDrop;
 
 mod disp;
 pub mod error;
@@ -86,10 +86,15 @@ impl<'src, S> Definition<'src, S> {
     pub fn append_block(self: &Box<Self>, mut blk: Box<Block<'src, S>>) -> Owned<Block<'src, S>> {
         let raw = blk.as_mut() as *mut _;
         self.append(blk);
-        unsafe { ManuallyDrop::new(Box::from_raw(raw)) }
+        unsafe { Owned::from_raw(raw) }
     }
     pub fn append_new_block(self: &Box<Self>) -> Owned<Block<'src, S>> {
         self.append_block(Box::new(Block::new()))
+    }
+}
+impl<S: Clone> Clone for Definition<'_, S> {
+    fn clone(&self) -> Self {
+        Self::new(self.name.clone())
     }
 }
 impl<S> Drop for Definition<'_, S> {
@@ -121,8 +126,8 @@ unsafe impl<'src, S> LinkedListElem for Definition<'src, S> {
     fn next_elem(&self) -> &AtomicPtr<Self> {
         &self.next_def
     }
-    fn prep_drop(&self) {
-        self.iter().for_each(LinkedListElem::prep_drop);
+    fn prep_drop(&mut self) {
+        self.iter_mut().for_each(LinkedListElem::prep_drop);
     }
 }
 
@@ -148,17 +153,18 @@ impl<'src, S> Block<'src, S> {
     pub fn parent(&self) -> Option<Owned<Definition<'src, S>>> {
         unsafe {
             let ptr = self.parent.load(Ordering::Relaxed);
-            (!ptr.is_null()).then(|| ManuallyDrop::new(Box::from_raw(ptr)))
+            (!ptr.is_null()).then(|| Owned::from_raw(ptr))
         }
     }
     pub fn module(&self) -> Option<Owned<Module<'src, S>>> {
         unsafe {
-            let ptr = self.parent
+            let ptr = self
+                .parent
                 .load(Ordering::Relaxed)
                 .as_ref()?
                 .parent
                 .load(Ordering::Relaxed);
-            (!ptr.is_null()).then(|| ManuallyDrop::new(Box::from_raw(ptr)))
+            (!ptr.is_null()).then(|| Owned::from_raw(ptr))
         }
     }
 }
@@ -191,12 +197,13 @@ unsafe impl<'src, S> LinkedListElem for Block<'src, S> {
     fn next_elem(&self) -> &AtomicPtr<Self> {
         &self.next_blk
     }
-    fn prep_drop(&self) {
-        self.iter().for_each(LinkedListElem::prep_drop);
+    fn prep_drop(&mut self) {
+        self.iter_mut().for_each(LinkedListElem::prep_drop);
     }
 }
 
 /// The kinds of data a value can hold.
+#[derive(Debug)]
 enum ValueInner<'src, S> {
     Null,
     Error,
@@ -208,7 +215,8 @@ enum ValueInner<'src, S> {
     /// First param, second param
     Call(*const Value<'src, S>, *const Value<'src, S>),
     /// Wrapper around a global value
-    Function(*const Definition<'src, S>),
+    UnresolvedGlobal(Cow<'src, str>),
+    ResolvedGlobal(*const Definition<'src, S>),
     /// Argument for a function
     FunctionArg(*const Definition<'src, S>),
     CondBr {
@@ -223,6 +231,8 @@ enum ValueInner<'src, S> {
         default: *const Value<'src, S>,
     },
 }
+unsafe impl<S> Send for ValueInner<'_, S> {}
+unsafe impl<S> Sync for ValueInner<'_, S> {}
 
 /// A value in the HIR. Acts as an intrusive list element, is reference-counted for safety.
 pub struct Value<'src, S> {
@@ -238,10 +248,10 @@ pub struct Value<'src, S> {
     dropped: AtomicBool,
 }
 impl<'src, S> Value<'src, S> {
-    pub fn null(span: S, name: impl Into<Box<str>>) -> Self {
+    fn create(inner: ValueInner<'src, S>, span: S, name: impl Into<Box<str>>) -> Self {
         Self {
             name: name.into(),
-            inner: ValueInner::Null,
+            inner,
             span,
             parent: AtomicPtr::new(std::ptr::null_mut()),
             prev_val: AtomicPtr::new(std::ptr::null_mut()),
@@ -249,79 +259,28 @@ impl<'src, S> Value<'src, S> {
             refs: AtomicUsize::new(0),
             dropped: AtomicBool::new(false),
         }
+    }
+    pub fn null(span: S, name: impl Into<Box<str>>) -> Self {
+        Self::create(ValueInner::Null, span, name)
     }
     pub fn error(span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
-            name: name.into(),
-            inner: ValueInner::Error,
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Error, span, name)
     }
     pub fn int(val: i128, span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
-            name: name.into(),
-            inner: ValueInner::Int(val),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Int(val), span, name)
     }
     pub fn float(val: f64, span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
-            name: name.into(),
-            inner: ValueInner::Float(val),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Float(val), span, name)
     }
     pub fn string(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
-            name: name.into(),
-            inner: ValueInner::String(val),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::String(val), span, name)
     }
     pub fn comment(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
-            name: name.into(),
-            inner: ValueInner::Comment(val),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Comment(val), span, name)
     }
     pub fn new_loc(val: &Box<Value<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
         val.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::NewLoc(&**val as *const _),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::NewLoc(&**val as *const _), span, name)
     }
     pub fn call(
         func: &Box<Value<'src, S>>,
@@ -331,42 +290,18 @@ impl<'src, S> Value<'src, S> {
     ) -> Self {
         func.refs.fetch_add(1, Ordering::Relaxed);
         arg.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::Call(&**func as *const _, &**arg as *const _),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Call(&**func as *const _, &**arg as *const _), span, name)
     }
-    pub fn function(val: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn uglobal(val: Cow<'src, str>, span: S, name: impl Into<Box<str>>) -> Self {
+        Self::create(ValueInner::UnresolvedGlobal(val), span, name)
+    }
+    pub fn rglobal(val: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
         val.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::Function(&**val as *const _),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::ResolvedGlobal(&**val as *const _), span, name)
     }
     pub fn func_arg(func: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
         func.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::FunctionArg(&**func as *const _),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::FunctionArg(&**func as *const _), span, name)
     }
     pub fn cond_br(
         cond: &Box<Value<'src, S>>,
@@ -378,33 +313,15 @@ impl<'src, S> Value<'src, S> {
         cond.refs.fetch_add(1, Ordering::Relaxed);
         if_true.refs.fetch_add(1, Ordering::Relaxed);
         if_false.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::CondBr {
-                cond: &**cond as *const _,
-                if_true: &**if_true as *const _,
-                if_false: &**if_false as *const _,
-            },
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::CondBr {
+            cond: &**cond as *const _,
+            if_true: &**if_true as *const _,
+            if_false: &**if_false as *const _,
+        }, span, name)
     }
     pub fn uncond_br(next: &Box<Block<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
         next.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::UncondBr(&**next as *const _),
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::UncondBr(&**next as *const _), span, name)
     }
     pub fn phi(
         pred: &Box<Block<'src, S>>,
@@ -416,20 +333,11 @@ impl<'src, S> Value<'src, S> {
         pred.refs.fetch_add(1, Ordering::Relaxed);
         value.refs.fetch_add(1, Ordering::Relaxed);
         default.refs.fetch_add(1, Ordering::Relaxed);
-        Self {
-            name: name.into(),
-            inner: ValueInner::Phi {
-                pred: &**pred as *const _,
-                value: &**value as *const _,
-                default: &**default as *const _,
-            },
-            span,
-            parent: AtomicPtr::new(std::ptr::null_mut()),
-            prev_val: AtomicPtr::new(std::ptr::null_mut()),
-            next_val: AtomicPtr::new(std::ptr::null_mut()),
-            refs: AtomicUsize::new(0),
-            dropped: AtomicBool::new(false),
-        }
+        Self::create(ValueInner::Phi {
+            pred: &**pred as *const _,
+            value: &**value as *const _,
+            default: &**default as *const _,
+        }, span, name)
     }
 
     pub fn parent(&self) -> Option<&Block<'src, S>> {
@@ -460,7 +368,7 @@ impl<'src, S> Value<'src, S> {
     }
     /// Decrement the reference counts of all structs that this refers to. This also marks the
     /// value as poisoned, and it can't be used after this.
-    pub fn prep_drop(&self) {
+    pub fn rm_links(&self) {
         use ValueInner::*;
         if self.dropped.swap(true, Ordering::AcqRel) {
             return;
@@ -468,35 +376,36 @@ impl<'src, S> Value<'src, S> {
         unsafe {
             match self.inner {
                 NewLoc(val) => {
-                    (*val).refs.fetch_sub(1, Ordering::Relaxed);
+                    (*val).refs.fetch_sub(1, Ordering::AcqRel);
                 }
                 Call(func, arg) => {
-                    (*func).refs.fetch_sub(1, Ordering::Relaxed);
-                    (*arg).refs.fetch_sub(1, Ordering::Relaxed);
+                    (*func).refs.fetch_sub(1, Ordering::AcqRel);
+                    (*arg).refs.fetch_sub(1, Ordering::AcqRel);
                 }
-                Function(func) | FunctionArg(func) => {
-                    (*func).refs.fetch_sub(1, Ordering::Relaxed);
+                FunctionArg(func) | ResolvedGlobal(func) => {
+                    println!("decr refs for {func:?}");
+                    (*func).refs.fetch_sub(1, Ordering::AcqRel);
                 }
                 CondBr {
                     cond,
                     if_true,
                     if_false,
                 } => {
-                    (*cond).refs.fetch_sub(1, Ordering::Relaxed);
-                    (*if_true).refs.fetch_sub(1, Ordering::Relaxed);
-                    (*if_false).refs.fetch_sub(1, Ordering::Relaxed);
+                    (*cond).refs.fetch_sub(1, Ordering::AcqRel);
+                    (*if_true).refs.fetch_sub(1, Ordering::AcqRel);
+                    (*if_false).refs.fetch_sub(1, Ordering::AcqRel);
                 }
                 UncondBr(next) => {
-                    (*next).refs.fetch_sub(1, Ordering::Relaxed);
+                    (*next).refs.fetch_sub(1, Ordering::AcqRel);
                 }
                 Phi {
                     pred,
                     value,
                     default,
                 } => {
-                    (*pred).refs.fetch_sub(1, Ordering::Relaxed);
-                    (*value).refs.fetch_sub(1, Ordering::Relaxed);
-                    (*default).refs.fetch_sub(1, Ordering::Relaxed);
+                    (*pred).refs.fetch_sub(1, Ordering::AcqRel);
+                    (*value).refs.fetch_sub(1, Ordering::AcqRel);
+                    (*default).refs.fetch_sub(1, Ordering::AcqRel);
                 }
                 _ => {}
             }
@@ -515,8 +424,8 @@ unsafe impl<'src, S> LinkedListElem for Value<'src, S> {
     fn next_elem(&self) -> &AtomicPtr<Self> {
         &self.next_val
     }
-    fn prep_drop(&self) {
-        self.prep_drop();
+    fn prep_drop(&mut self) {
+        self.rm_links();
     }
 }
 impl<S> Drop for Value<'_, S> {
@@ -536,26 +445,40 @@ impl<'src, S> Builder<'src, S> {
             pos: AtomicPtr::new(std::ptr::null_mut()),
         }
     }
-    pub fn position_at(&self, blk: &Box<Block<'src, S>>) {
+    pub fn position_at(&self, blk: &Owned<Block<'src, S>>) -> Option<Owned<Block<'src, S>>> {
         blk.refs.fetch_add(1, Ordering::AcqRel);
         let ptr = self.pos.swap(
-            &**blk as *const Block<'src, S> as *mut Block<'src, S>,
+            &***blk as *const Block<'src, S> as *mut Block<'src, S>,
             Ordering::AcqRel,
         );
         if let Some(old) = unsafe { ptr.as_ref() } {
             old.refs.fetch_sub(1, Ordering::AcqRel);
         }
+        unsafe { Owned::try_from_raw(ptr) }
     }
-    pub fn clear_pos(&self) {
+    pub fn clear_pos(&self) -> Option<Owned<Block<'src, S>>> {
         let ptr = self.pos.swap(std::ptr::null_mut(), Ordering::AcqRel);
         if let Some(old) = unsafe { ptr.as_ref() } {
             old.refs.fetch_sub(1, Ordering::AcqRel);
         }
+        unsafe { Owned::try_from_raw(ptr) }
     }
-    /// Get the position, use a `ManuallyDrop<Box<...>>` to show that this value is on heap.
+    pub fn set_pos(&self, blk: Option<&Owned<Block<'src, S>>>) -> Option<Owned<Block<'src, S>>> {
+        let ptr = self.pos.swap(
+            blk.map_or(std::ptr::null_mut(), |blk| {
+                blk.refs.fetch_add(1, Ordering::AcqRel);
+                &***blk as *const Block<'src, S> as *mut Block<'src, S>
+            }),
+            Ordering::AcqRel,
+        );
+        if let Some(old) = unsafe { ptr.as_ref() } {
+            old.refs.fetch_sub(1, Ordering::AcqRel);
+        }
+        unsafe { Owned::try_from_raw(ptr) }
+    }
     pub fn get_pos(&self) -> Option<Owned<Block<'src, S>>> {
         let ptr = self.pos.load(Ordering::Relaxed);
-        (!ptr.is_null()).then(|| unsafe { ManuallyDrop::new(Box::from_raw(ptr)) })
+        (!ptr.is_null()).then(|| unsafe { Owned::from_raw(ptr) })
     }
     pub fn get_func(&self) -> Option<Owned<Definition<'src, S>>> {
         self.get_pos().and_then(|b| b.parent())

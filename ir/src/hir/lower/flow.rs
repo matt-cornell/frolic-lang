@@ -1,9 +1,9 @@
 use super::*;
 
-impl<'src, A: ToHir<'src>> ToHir<'src> for asts::IfElseAST<A> {
+impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::IfElseAST<A> {
     fn to_hir(
         &self,
-        glb: &GlobalContext<'_, 'src, Self::Span>,
+        glb: &GlobalContext<'_, 'src, Self::Span, F>,
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         let (cond, ret) = self.cond.to_hir(glb, loc);

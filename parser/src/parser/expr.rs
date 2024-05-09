@@ -54,7 +54,10 @@ impl<'src, A: Located> LambdaStub<'src, A> {
         }
     }
     /// allows for a more functional solution
-    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A> + 'src>(body: A, this: Self) -> D::AstBox<'src>
+    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A> + 'src>(
+        body: A,
+        this: Self,
+    ) -> D::AstBox<'src>
     where
         asts::LambdaAST<'src, A>: Unsize<D::AstTrait<'src>>,
         A: 'src,
@@ -124,6 +127,7 @@ where
             A::make_box(asts::CallAST {
                 func: A::make_box(asts::VarAST {
                     name: op.into(),
+                    global: None,
                     loc: span,
                 }),
                 arg: ast,
@@ -160,6 +164,7 @@ where
             }
             let func = A::make_box(asts::VarAST {
                 name: tok.kind.inf_op_str().unwrap().into(),
+                global: None,
                 loc: tok.span,
             });
             self.index += 1;
@@ -226,6 +231,7 @@ where
                 _ => {
                     let func = A::make_box(asts::VarAST {
                         name: op.into(),
+                        global: None,
                         loc,
                     });
                     let inter = A::make_box(asts::CallAST { func, arg: lhs });
@@ -763,6 +769,7 @@ where
             }) => (
                 A::make_box(asts::VarAST {
                     name: i.into(),
+                    global: None,
                     loc: span,
                 }),
                 false,
@@ -794,6 +801,7 @@ where
                         return (
                             A::make_box(asts::VarAST {
                                 name: i.into(),
+                                global: None,
                                 loc: span,
                             }),
                             false,

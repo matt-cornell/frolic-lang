@@ -3,10 +3,16 @@ use std::fmt::Debug;
 use std::ops::Deref;
 
 pub trait AstDefs {
-    type AstTrait<'a>: Unsize<Self::AstTrait<'a>> + ?Sized + 'a where Self: 'a;
-    type AstBox<'a>: Deref<Target = Self::AstTrait<'a>> where Self: 'a;
+    type AstTrait<'a>: Unsize<Self::AstTrait<'a>> + ?Sized + 'a
+    where
+        Self: 'a;
+    type AstBox<'a>: Deref<Target = Self::AstTrait<'a>>
+    where
+        Self: 'a;
 
-    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a> where Self: 'a;
+    fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a>
+    where
+        Self: 'a;
 }
 
 #[macro_export]

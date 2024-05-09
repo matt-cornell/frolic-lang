@@ -164,9 +164,9 @@ impl Runnable for FrolicDebugHir {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
+        use frolic_ir::prelude::*;
         use frolic_parser::prelude::*;
         use frolic_utils::prelude::*;
-        use frolic_ir::prelude::*;
         use std::sync::Mutex;
 
         let errs = Mutex::new(DiagnosticPrint::new(
@@ -200,7 +200,7 @@ impl Runnable for FrolicDebugHir {
         };
 
         let ast = parse_tl(&toks, file, &errs, HirAsts::new());
-        let hir = lower_ast(&ast, None, &errs);
+        let hir = lower_ast(&ast, None, None, &errs);
 
         write!(stdout, "{hir}")?;
 

@@ -1,26 +1,29 @@
 #![feature(unsize)]
 
 use clap::{Args, Parser, Subcommand};
-use std::io::{self, Read, Write};
-use std::path::PathBuf;
-use std::marker::PhantomData;
-use frolic_utils::prelude::*;
-use frolic_parser::prelude::*;
 use frolic_ir::prelude::*;
+use frolic_parser::prelude::*;
+use frolic_utils::prelude::*;
+use std::io::{self, Read, Write};
+use std::marker::PhantomData;
+use std::path::PathBuf;
 
 pub mod debug;
 
-pub struct HirAsts<'src, S>(PhantomData<fn () -> &'src S>);
-impl<S> HirAsts<'_, S> {
+pub struct HirAsts<'src, S, F>(PhantomData<fn() -> &'src (S, F)>);
+impl<S, F> HirAsts<'_, S, F> {
     pub const fn new() -> Self {
         Self(PhantomData)
     }
 }
-impl<'src, S: Span + 'static> AstDefs for HirAsts<'src, S> {
-    type AstTrait<'a> = dyn ToHir<'src, Span = S> + Send + Sync + 'a where Self: 'a;
-    type AstBox<'a> = Box<dyn ToHir<'src, Span = S> + Send + Sync + 'a> where Self: 'a;
+impl<'src, F, S: Span + 'static> AstDefs for HirAsts<'src, S, F> {
+    type AstTrait<'a> = dyn ToHir<'src, F, Span = S> + Send + Sync + 'a where Self: 'a;
+    type AstBox<'a> = Box<dyn ToHir<'src, F, Span = S> + Send + Sync + 'a> where Self: 'a;
 
-    fn make_box<'a, T: std::marker::Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a> where Self: 'a {
+    fn make_box<'a, T: std::marker::Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a>
+    where
+        Self: 'a,
+    {
         Box::new(val) as _
     }
 }

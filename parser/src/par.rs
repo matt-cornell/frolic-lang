@@ -1,17 +1,5 @@
 //! Parallelization for large inputs.
 
-/// With rayon disabled, just call our operator function on the whole input
-#[cfg(not(feature = "rayon"))]
-pub fn dispatch_chunks<'a, T, R>(
-    input: &'a [T],
-    _next: impl Fn(usize, &'a [T]) -> usize,
-    op: impl Fn(&'a [T], usize) -> Vec<R>,
-    _min_block: usize,
-) -> Vec<R> {
-    op(input, 0)
-}
-
-/// With rayon enabled, use `next` to determine where the next index should be.
 #[cfg(feature = "rayon")]
 pub fn dispatch_chunks<'a, T: Sync + 'a, R: Send>(
     input: &'a [T],

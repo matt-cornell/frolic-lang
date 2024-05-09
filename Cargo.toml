@@ -8,6 +8,8 @@ edition = "2021"
 repository = "https://github.com/matt-cornell/frolic-lang"
 
 [workspace.dependencies]
+ahash = "0.8.11"
+boxcar = "0.2.4"
 bstr = { version = "1.9.1", default-features = false }
 frolic-ast = { version = "0.0.1", path = "ast" }
 frolic-ir = { version = "0.0.1", path = "ir" }

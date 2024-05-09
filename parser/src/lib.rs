@@ -2,6 +2,7 @@
 
 use frolic_utils::prelude::*;
 use lexer::tokens::*;
+#[cfg(feature = "rayon")]
 use par::dispatch_chunks;
 
 pub mod lexer;
