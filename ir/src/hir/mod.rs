@@ -248,8 +248,8 @@ pub struct Value<'src, S> {
     dropped: AtomicBool,
 }
 impl<'src, S> Value<'src, S> {
-    fn create(inner: ValueInner<'src, S>, span: S, name: impl Into<Box<str>>) -> Self {
-        Self {
+    fn create(inner: ValueInner<'src, S>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
+        Box::new(Self {
             name: name.into(),
             inner,
             span,
@@ -258,50 +258,50 @@ impl<'src, S> Value<'src, S> {
             next_val: AtomicPtr::new(std::ptr::null_mut()),
             refs: AtomicUsize::new(0),
             dropped: AtomicBool::new(false),
-        }
+        })
     }
-    pub fn null(span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn null(span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::Null, span, name)
     }
-    pub fn error(span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn error(span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::Error, span, name)
     }
-    pub fn int(val: i128, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn int(val: i128, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::Int(val), span, name)
     }
-    pub fn float(val: f64, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn float(val: f64, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::Float(val), span, name)
     }
-    pub fn string(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn string(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::String(val), span, name)
     }
-    pub fn comment(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn comment(val: Cow<'src, [u8]>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::Comment(val), span, name)
     }
-    pub fn new_loc(val: &Box<Value<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn new_loc(val: &Box<Value<'src, S>>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         val.refs.fetch_add(1, Ordering::Relaxed);
-        Self::create(ValueInner::NewLoc(&**val as *const _), span, name)
+        Self::create(ValueInner::NewLoc(Box::as_ref(val) as *const Value<'src, S>), span, name)
     }
     pub fn call(
         func: &Box<Value<'src, S>>,
         arg: &Box<Value<'src, S>>,
         span: S,
         name: impl Into<Box<str>>,
-    ) -> Self {
+    ) -> Box<Self> {
         func.refs.fetch_add(1, Ordering::Relaxed);
         arg.refs.fetch_add(1, Ordering::Relaxed);
-        Self::create(ValueInner::Call(&**func as *const _, &**arg as *const _), span, name)
+        Self::create(ValueInner::Call(Box::as_ref(func) as *const Value<'src, S>, Box::as_ref(arg) as *const Value<'src, S>), span, name)
     }
-    pub fn uglobal(val: Cow<'src, str>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn uglobal(val: Cow<'src, str>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         Self::create(ValueInner::UnresolvedGlobal(val), span, name)
     }
-    pub fn rglobal(val: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn rglobal(val: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         val.refs.fetch_add(1, Ordering::Relaxed);
-        Self::create(ValueInner::ResolvedGlobal(&**val as *const _), span, name)
+        Self::create(ValueInner::ResolvedGlobal(Box::as_ref(val) as *const Definition<'src, S>), span, name)
     }
-    pub fn func_arg(func: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn func_arg(func: &Box<Definition<'src, S>>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         func.refs.fetch_add(1, Ordering::Relaxed);
-        Self::create(ValueInner::FunctionArg(&**func as *const _), span, name)
+        Self::create(ValueInner::FunctionArg(Box::as_ref(func) as *const Definition<'src, S>), span, name)
     }
     pub fn cond_br(
         cond: &Box<Value<'src, S>>,
@@ -309,19 +309,19 @@ impl<'src, S> Value<'src, S> {
         if_false: &Box<Block<'src, S>>,
         span: S,
         name: impl Into<Box<str>>,
-    ) -> Self {
+    ) -> Box<Self> {
         cond.refs.fetch_add(1, Ordering::Relaxed);
         if_true.refs.fetch_add(1, Ordering::Relaxed);
         if_false.refs.fetch_add(1, Ordering::Relaxed);
         Self::create(ValueInner::CondBr {
-            cond: &**cond as *const _,
-            if_true: &**if_true as *const _,
-            if_false: &**if_false as *const _,
+            cond: Box::as_ref(cond) as *const Value<'src, S>,
+            if_true: Box::as_ref(if_true) as *const Block<'src, S>,
+            if_false: Box::as_ref(if_false) as *const Block<'src, S>,
         }, span, name)
     }
-    pub fn uncond_br(next: &Box<Block<'src, S>>, span: S, name: impl Into<Box<str>>) -> Self {
+    pub fn uncond_br(next: &Box<Block<'src, S>>, span: S, name: impl Into<Box<str>>) -> Box<Self> {
         next.refs.fetch_add(1, Ordering::Relaxed);
-        Self::create(ValueInner::UncondBr(&**next as *const _), span, name)
+        Self::create(ValueInner::UncondBr(Box::as_ref(next) as *const Block<'src, S>), span, name)
     }
     pub fn phi(
         pred: &Box<Block<'src, S>>,
@@ -329,14 +329,14 @@ impl<'src, S> Value<'src, S> {
         default: &Box<Value<'src, S>>,
         span: S,
         name: impl Into<Box<str>>,
-    ) -> Self {
+    ) -> Box<Self> {
         pred.refs.fetch_add(1, Ordering::Relaxed);
         value.refs.fetch_add(1, Ordering::Relaxed);
         default.refs.fetch_add(1, Ordering::Relaxed);
         Self::create(ValueInner::Phi {
-            pred: &**pred as *const _,
-            value: &**value as *const _,
-            default: &**default as *const _,
+            pred: Box::as_ref(pred) as *const Block<'src, S>,
+            value: Box::as_ref(value) as *const Value<'src, S>,
+            default: Box::as_ref(default) as *const Value<'src, S>,
         }, span, name)
     }
 

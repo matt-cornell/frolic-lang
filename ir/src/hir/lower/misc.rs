@@ -7,7 +7,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::CommentAST<'src, S> {
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         loc.builder
-            .append(Box::new(Value::comment(self.comm.clone(), self.loc, "")));
+            .append(Value::comment(self.comm.clone(), self.loc, ""));
         (None, false)
     }
 }
@@ -19,7 +19,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::ErrorAST<S> {
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         (
-            Some(loc.builder.append(Box::new(Value::error(self.loc, "")))),
+            Some(loc.builder.append(Value::error(self.loc, ""))),
             false,
         )
     }
@@ -32,7 +32,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::NullAST<S> {
         loc: &mut LocalContext<'src, Self::Span>,
     ) -> (Option<Owned<Value<'src, Self::Span>>>, bool) {
         (
-            Some(loc.builder.append(Box::new(Value::null(self.loc, "")))),
+            Some(loc.builder.append(Value::null(self.loc, ""))),
             false,
         )
     }
@@ -51,19 +51,19 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::VarAST<'src, S> {
         }
         if loc.global_scope.get(&*self.name).is_some() {
             return (
-                Some(loc.builder.append(Box::new(Value::uglobal(
+                Some(loc.builder.append(Value::uglobal(
                     format!(".{}", self.name).into(),
                     self.loc,
                     self.name.clone().into_owned(),
-                )))),
+                ))),
                 false,
             );
         }
         (
-            Some(loc.builder.append(Box::new(Value::error(
+            Some(loc.builder.append(Value::error(
                 self.loc,
                 self.name.clone().into_owned(),
-            )))),
+            ))),
             (glb.report)(HirError::UnresolvedVariable {
                 name: self.name.clone(),
                 span: self.loc,

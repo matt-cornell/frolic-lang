@@ -49,7 +49,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                         span: *span,
                         value: body.unwrap_or_else(|| {
                             loc.builder
-                                .append(Box::new(Value::null(self.body.loc(), "error")))
+                                .append(Value::null(self.body.loc(), "error"))
                         }),
                     },
                 );
@@ -133,7 +133,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                             span,
                             value: loc
                                 .builder
-                                .append(Box::new(Value::rglobal(&def, span, &**name))),
+                                .append(Value::rglobal(&def, span, &**name)),
                         },
                     );
                 } else {
@@ -170,14 +170,14 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
 
                 loc.symbols.push_scope();
                 let old_pos = loc.builder.position_at(&iblk);
+                let val = Value::func_arg(&def, span, &**name);
+                let value = loc.builder.append(val);
                 loc.symbols.insert(
                     name.clone(),
                     Symbol {
                         file: (),
                         span,
-                        value: loc
-                            .builder
-                            .append(Box::new(Value::func_arg(&def, span, &**name))),
+                        value,
                     },
                 );
                 stack.push((def, blk));
@@ -209,7 +209,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                         span: *span,
                         value: loc
                             .builder
-                            .append(Box::new(Value::func_arg(&def, *span, &**name))),
+                            .append(Value::func_arg(&def, *span, &**name)),
                     },
                 );
             }
@@ -220,7 +220,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                     span: ispan,
                     value: loc
                         .builder
-                        .append(Box::new(Value::func_arg(&idef, ispan, &**iname))),
+                        .append(Value::func_arg(&idef, ispan, &**iname)),
                 },
             );
             stack.push((idef, iblk));
@@ -233,11 +233,11 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                 .map(|arr| <&[(Owned<_>, Owned<_>); 2]>::try_from(arr).unwrap())
             {
                 loc.builder.position_at(&blk);
-                loc.builder.append(Box::new(Value::rglobal(
+                loc.builder.append(Value::rglobal(
                     &def,
                     def.name.as_ref().unwrap().segs.last().unwrap().1,
                     "",
-                )));
+                ));
             }
 
             loc.restore_scope(res);

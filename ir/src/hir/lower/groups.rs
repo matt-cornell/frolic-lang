@@ -17,7 +17,7 @@ impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::ParenAST<A> {
         (
             val.map(|v| {
                 loc.builder
-                    .append(Box::new(Value::new_loc(&v, self.loc(), "")))
+                    .append(Value::new_loc(&v, self.loc(), ""))
             }),
             ret,
         )

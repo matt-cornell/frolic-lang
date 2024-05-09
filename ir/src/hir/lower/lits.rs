@@ -9,7 +9,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::IntLitAST<S> {
         (
             Some(
                 loc.builder
-                    .append(Box::new(Value::int(self.val, self.loc, ""))),
+                    .append(Value::int(self.val, self.loc, "")),
             ),
             false,
         )
@@ -24,7 +24,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::FloatLitAST<S> {
         (
             Some(
                 loc.builder
-                    .append(Box::new(Value::float(self.val as _, self.loc, ""))),
+                    .append(Value::float(self.val as _, self.loc, "")),
             ),
             false,
         )
@@ -39,7 +39,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::CharLitAST<S> {
         (
             Some(
                 loc.builder
-                    .append(Box::new(Value::int(self.val as _, self.loc, ""))),
+                    .append(Value::int(self.val as _, self.loc, "")),
             ),
             false,
         )
@@ -54,7 +54,7 @@ impl<'src, F, S: Span> ToHir<'src, F> for asts::StringLitAST<'src, S> {
         (
             Some(
                 loc.builder
-                    .append(Box::new(Value::string(self.val.clone(), self.loc, ""))),
+                    .append(Value::string(self.val.clone(), self.loc, "")),
             ),
             false,
         )

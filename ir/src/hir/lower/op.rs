@@ -13,30 +13,30 @@ impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::ShortCircuitAST<A> {
         let rhs_blk = func.append_new_block();
         let merge = func.append_new_block();
         if self.is_or {
-            loc.builder.append(Box::new(Value::cond_br(
+            loc.builder.append(Value::cond_br(
                 &cond,
                 &merge,
                 &rhs_blk,
                 self.loc(),
                 "",
-            )));
+            ));
         } else {
-            loc.builder.append(Box::new(Value::cond_br(
+            loc.builder.append(Value::cond_br(
                 &cond,
                 &rhs_blk,
                 &merge,
                 self.loc(),
                 "",
-            )));
+            ));
         }
         loc.builder.position_at(&merge);
         let (rhs, ret) = self.rhs.to_hir(glb, loc);
         loc.builder
-            .append(Box::new(Value::uncond_br(&merge, self.loc(), "")));
+            .append(Value::uncond_br(&merge, self.loc(), ""));
         (
             rhs.map(|rhs| {
                 loc.builder
-                    .append(Box::new(Value::phi(&rhs_blk, &rhs, &cond, self.loc(), "")))
+                    .append(Value::phi(&rhs_blk, &rhs, &cond, self.loc(), ""))
             }),
             ret,
         )

@@ -18,7 +18,7 @@ impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::CallAST<A> {
             (
                 Some(
                     loc.builder
-                        .append(Box::new(Value::call(&func, &arg, self.loc(), ""))),
+                        .append(Value::call(&func, &arg, self.loc(), "")),
                 ),
                 false,
             )
@@ -53,7 +53,7 @@ impl<'src, F, A: ToHir<'src, F>> ToHir<'src, F> for asts::LambdaAST<'src, A> {
             loc.builder.position_at(&old);
             Some(
                 loc.builder
-                    .append(Box::new(Value::rglobal(&def, span, "lambda"))),
+                    .append(Value::rglobal(&def, span, "lambda")),
             )
         } else {
             loc.builder.clear_pos();

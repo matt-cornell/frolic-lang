@@ -24,7 +24,7 @@ impl<S> Display for Value<'_, S> {
         write!(
             f,
             "%{{{}:{:0>PTR_WIDTH$x}}}",
-            "", // TODO: fix segfault
+            self.name,
             self as *const Self as usize & PTR_MASK
         )?;
         if !f.alternate() {
