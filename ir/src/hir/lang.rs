@@ -45,6 +45,8 @@ impl<'src, S> lang::Language<'src, S> for Hir {
 pub type GlobalId<'src, S> = lang::GlobalId<'src, S, Hir>;
 pub type BlockId<'src, S> = lang::BlockId<'src, S, Hir>;
 pub type InstId<'src, S> = lang::InstId<'src, S, Hir>;
+pub type ModuleId<'src, S> = lang::ModuleId<'src, S, Hir>;
+pub type UniversalGlobalId<'src, S, F> = lang::UniversalGlobalId<'src, S, F, Hir>;
 
 pub type Module<'src, S> = lang::Module<'src, S, Hir>;
 pub type Global<'src, S> = lang::Global<'src, S, Hir>;

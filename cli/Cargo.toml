@@ -10,11 +10,12 @@ repository.workspace = true
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 frolic-ast.workspace = true
-frolic-parser = { version = "0.0.1", path = "../parser" }
+frolic-ir.workspace = true
+frolic-parser.workspace = true
 frolic-utils.workspace = true
 miette = { workspace = true, features = ["fancy"] }
 
 [features]
 default = ["rayon"]
 
-rayon = ["frolic-parser/rayon"]
+rayon = ["frolic-parser/rayon", "frolic-ir/rayon"]

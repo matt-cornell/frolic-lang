@@ -1,6 +1,6 @@
-use thiserror::Error;
-use miette::Diagnostic;
 use frolic_utils::prelude::*;
+use miette::Diagnostic;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
 pub enum HirError<'src, S: Span> {
@@ -9,5 +9,5 @@ pub enum HirError<'src, S: Span> {
         src: &'src [u8],
         #[label]
         label: S,
-    }
+    },
 }

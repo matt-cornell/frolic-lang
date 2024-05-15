@@ -1,8 +1,10 @@
 use derivative::Derivative;
 use orx_concurrent_vec::ConcurrentVec as ConVec;
 use std::fmt::Debug;
+use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::Index;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub mod markers {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -11,6 +13,8 @@ pub mod markers {
     pub struct Block;
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Inst;
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Module;
 }
 
 pub trait Language<'src, S> {
@@ -22,6 +26,23 @@ pub trait Language<'src, S> {
 pub type GlobalId<'src, S, L> = Id<PhantomData<(&'src L, markers::Global, S)>>;
 pub type BlockId<'src, S, L> = Id<PhantomData<(&'src L, markers::Block, S)>>;
 pub type InstId<'src, S, L> = Id<PhantomData<(&'src L, markers::Inst, S)>>;
+pub type ModuleId<'src, S, L> = Id<PhantomData<(&'src L, markers::Module, S)>>;
+
+#[derive(Derivative)]
+#[derivative(
+    Debug(bound = "F: Debug, S: Debug"),
+    Clone(bound = "F: Clone, S: Clone"),
+    Copy(bound = "F: Copy, S: Copy"),
+    PartialEq(bound = "F: PartialEq, S: PartialEq"),
+    Eq(bound = "F: PartialEq, S: PartialEq"),
+    Hash(bound = "F: Hash, S: Hash")
+)]
+pub struct UniversalGlobalId<'src, S, F, L> {
+    pub id: GlobalId<'src, S, L>,
+    pub module: ModuleId<'src, S, L>,
+    pub file: F,
+    pub span: S,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Id<M> {
@@ -42,10 +63,13 @@ impl<M: Default> Id<M> {
     }
 }
 
+static MODULE_ID: AtomicUsize = AtomicUsize::new(0);
+
 #[derive(Derivative)]
-#[derivative(Debug, Default(bound = ""))]
+#[derivative(Debug)]
 pub struct Module<'src, S, L: Language<'src, S>> {
     pub name: String,
+    id: usize,
     #[derivative(Debug = "ignore")]
     glbs: ConVec<Global<'src, S, L>>,
     #[derivative(Debug = "ignore")]
@@ -55,9 +79,14 @@ impl<'src, S, L: Language<'src, S>> Module<'src, S, L> {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            id: MODULE_ID.fetch_add(1, Ordering::Relaxed),
             glbs: ConVec::new(),
             insts: ConVec::new(),
         }
+    }
+    /// Returns a unique `usize` identifying this module.
+    pub fn id(&self) -> ModuleId<'src, S, L> {
+        ModuleId::new(self.id)
     }
     pub fn push_global(&self, glb: Global<'src, S, L>) -> GlobalId<'src, S, L> {
         GlobalId::new(self.glbs.push(glb))
@@ -79,6 +108,11 @@ impl<'src, S, L: Language<'src, S>> Module<'src, S, L> {
     }
     pub fn globals(&self) -> impl Iterator<Item = &Global<'src, S, L>> {
         self.glbs.iter()
+    }
+}
+impl<'src, S, L: Language<'src, S>> Default for Module<'src, S, L> {
+    fn default() -> Self {
+        Self::new(String::new())
     }
 }
 impl<'src, S, L: Language<'src, S>> Index<GlobalId<'src, S, L>> for Module<'src, S, L> {

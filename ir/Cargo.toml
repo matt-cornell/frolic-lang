@@ -7,10 +7,16 @@ repository.workspace = true
 [dependencies]
 derivative = "2.2.0"
 either = "1.11.0"
+frolic-ast.workspace = true
 frolic-utils.workspace = true
 miette.workspace = true
 orx-concurrent-vec = "1.7.0"
 parking_lot = { version = "0.12.2", features = ["nightly"] }
+rayon = { version = "1.10.0", optional = true }
 ref-cast = "1.0.23"
+smallvec.workspace = true
 thiserror.workspace = true
 thread_local = { version = "1.1.8", features = ["nightly"] }
+
+[features]
+rayon = ["dep:rayon"]
