@@ -78,7 +78,11 @@ impl<'src, S> LocalContext<'src, S> {
     }
     /// Globally format a string.
     pub fn glb_format(&self, name: &DottedName<'src, S>) -> String {
-        self.glb_segs(name).map(|s| format!(".{s}")).collect()
+        self.glb_segs(name).fold(String::new(), |mut out, s| {
+            use std::fmt::Write;
+            let _ = write!(out, ".{s}");
+            out
+        })
     }
 }
 impl<S> Default for LocalContext<'_, S> {

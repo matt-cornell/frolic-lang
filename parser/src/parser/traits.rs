@@ -9,6 +9,19 @@ pub trait AstDefs: 'static {
     fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a>;
 }
 
+/// Create an alias for a trait.
+///
+/// ## Usage
+/// ```
+/// trait_alias!(trait MyTrait = Trait1 + Trait2);
+/// ```
+/// Generics are supported, but bounds need to be specified with a `where` clause.
+///
+/// The generated code for this is just:
+/// ```
+/// trait MyTrait: Trait1 + Trait2 {}
+/// impl<T: Trait1 + Trait2> MyTrait for T {}
+/// ```
 #[macro_export]
 macro_rules! trait_alias {
     ($pub:vis trait $name:ident = $($traits:tt)*) => {
@@ -25,6 +38,19 @@ macro_rules! trait_alias {
     };
 }
 
+/// Convenience macro to create a struct and implement `AstDefs` for it.
+///
+/// ## Usage
+/// ```
+/// def_box_asts!(struct MyAsts = 'src -> dyn MyTrait<'src>);
+/// ```
+/// Generics are supported, but bounds must be specified with a `where` clause.
+///
+/// Because the generated type can be generic, a simple unit struct isn't always possible, so it
+/// will generate one with a `PhantomData` field. Lifetimes and generics are used in the return
+/// type of a function, so the generated type is `'static` no matter what.
+///
+/// A type is generated with a `new()` method (`const`) and an impl of `AstDefs`.
 #[macro_export]
 macro_rules! def_box_asts {
     ($pub:vis struct $name:ident = $lt:lifetime -> $traits:ty) => {
@@ -76,7 +102,9 @@ macro_rules! def_box_asts {
 
 trait_alias!(pub trait LocDebug<Span> = Debug + Located<Span = Span>);
 def_box_asts!(pub struct DebugAsts<S> = 'a -> dyn LocDebug<S> + 'a where S: Span + 'static);
+
 /*
+// def_box_asts! generates this
 pub struct DebugAsts<S>(PhantomData<S>);
 impl<S> DebugAsts<S> {
     pub const fn new() -> Self {
@@ -90,4 +118,5 @@ impl<S: Span + 'static> AstDefs for DebugAsts<S> {
     fn make_box<'a, T: Unsize<Self::AstTrait<'a>> + 'a>(val: T) -> Self::AstBox<'a> {
         Box::new(val) as _
     }
-}*/
+}
+*/
