@@ -1,8 +1,16 @@
+#![feature(unsize)]
+
 use clap::{Args, Parser, Subcommand};
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
+use frolic_utils::prelude::*;
+use frolic_parser::prelude::*;
+use frolic_ir::prelude::*;
+use std::sync::Mutex;
 
 pub mod debug;
+
+frolic_parser::def_box_asts!(pub struct HirAsts<S, F> = 'src -> dyn ToHir<'src, F, Span = S> where S: Span + 'static, F: Copy + 'static);
 
 /// Some kind of command that can be run.
 pub trait Runnable: Sized {
