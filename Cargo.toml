@@ -13,6 +13,7 @@ frolic-ast = { version = "0.0.1", path = "ast" }
 frolic-ir = { version = "0.0.1", path = "ir" }
 frolic-parser = { version = "0.0.1", path = "parser" }
 frolic-utils = { version = "0.0.1", path = "utils" }
+impl-tools = "0.10.0"
 miette = "7.2"
 smallvec = { version = "1.13.2", features = ["const_new"] }
 thiserror = "1.0"

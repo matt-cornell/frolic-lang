@@ -55,12 +55,13 @@ impl<S: Span> Located for NullAST<S> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct VarAST<'src, S> {
     pub name: Cow<'src, str>,
+    pub global: Option<S>,
     pub loc: S,
 }
 impl<S: Span> Located for VarAST<'_, S> {
     type Span = S;
 
     fn loc(&self) -> Self::Span {
-        self.loc
+        self.global.map_or(self.loc, |loc| loc.merge(self.loc))
     }
 }

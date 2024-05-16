@@ -110,7 +110,7 @@ pub enum TokenKind<'src> {
     Open(Delim),
     /// `)`, `]`, or `}`
     Close(Delim),
-    Int(i128),
+    Int(i64),
     Float(f64),
     Char(u32),
     /// A string literal. Will be borrowed if possible, but must be `Owned` if there are escape

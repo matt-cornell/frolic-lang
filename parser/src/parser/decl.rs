@@ -8,6 +8,7 @@ where
     asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
     asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,

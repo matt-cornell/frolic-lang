@@ -1,5 +1,6 @@
 use crate::common::lang;
 use std::borrow::Cow;
+use smallvec::SmallVec;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InstKind<'src, S> {
@@ -10,9 +11,15 @@ pub enum InstKind<'src, S> {
     ArgOf {
         func: GlobalId<'src, S>,
     },
+    FunctionTy {
+        arg: Operand<'src, S>,
+        ret: Operand<'src, S>,
+    },
+    Bind(Operand<'src, S>),
+    Phi(SmallVec<[(BlockId<'src, S>, Operand<'src, S>); 2]>)
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Default)]
 pub enum Terminator<'src, S> {
     #[default]
     Unreachable,
@@ -30,7 +37,7 @@ pub enum Constant<'src> {
     #[default]
     Error,
     Null,
-    Int(i128),
+    Int(i64),
     Float(f64),
     String(Cow<'src, [u8]>),
 }

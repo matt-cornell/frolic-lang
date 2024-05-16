@@ -88,29 +88,30 @@ impl SpanConstruct for miette::SourceSpan {
 }
 
 /// Something with a location
+#[impl_tools::autoimpl(for<T: trait + ?Sized> &T, Box<T>, Rc<T>, Arc<T>)]
 pub trait Located {
     type Span: Span;
 
     fn loc(&self) -> Self::Span;
 }
-impl<T: Located + ?Sized> Located for Box<T> {
-    type Span = T::Span;
+// impl<T: Located + ?Sized> Located for Box<T> {
+//     type Span = T::Span;
 
-    fn loc(&self) -> Self::Span {
-        T::loc(self)
-    }
-}
-impl<T: Located + ?Sized> Located for Rc<T> {
-    type Span = T::Span;
+//     fn loc(&self) -> Self::Span {
+//         T::loc(self)
+//     }
+// }
+// impl<T: Located + ?Sized> Located for Rc<T> {
+//     type Span = T::Span;
 
-    fn loc(&self) -> Self::Span {
-        T::loc(self)
-    }
-}
-impl<T: Located + ?Sized> Located for Arc<T> {
-    type Span = T::Span;
+//     fn loc(&self) -> Self::Span {
+//         T::loc(self)
+//     }
+// }
+// impl<T: Located + ?Sized> Located for Arc<T> {
+//     type Span = T::Span;
 
-    fn loc(&self) -> Self::Span {
-        T::loc(self)
-    }
-}
+//     fn loc(&self) -> Self::Span {
+//         T::loc(self)
+//     }
+// }

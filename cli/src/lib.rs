@@ -10,7 +10,7 @@ use std::sync::Mutex;
 
 pub mod debug;
 
-frolic_parser::def_box_asts!(pub struct HirAsts<S, F> = 'src -> dyn ToHir<'src, F, Span = S> where S: Span + 'static, F: Copy + 'static);
+frolic_parser::def_box_asts!(pub struct HirAsts<S, F> = 'src -> dyn ToHir<'src, F, Span = S> + Send + Sync where S: Span + 'static, F: Copy + 'static);
 
 /// Some kind of command that can be run.
 pub trait Runnable: Sized {

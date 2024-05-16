@@ -5,6 +5,8 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::Index;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::borrow::Cow;
+use frolic_utils::synccell::SyncCell;
 
 pub mod markers {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,11 +52,14 @@ pub struct Id<M> {
     pub marker: M,
 }
 impl<M> Id<M> {
-    pub fn with_marker(index: usize, marker: M) -> Self {
+    pub const fn with_marker(index: usize, marker: M) -> Self {
         Self { index, marker }
     }
 }
 impl<M: Default> Id<M> {
+    pub fn invalid() -> Self {
+        Self::new(usize::MAX)
+    }
     pub fn new(index: usize) -> Self {
         Self {
             index,
@@ -76,9 +81,9 @@ pub struct Module<'src, S, L: Language<'src, S>> {
     insts: ConVec<Instruction<'src, S, L>>,
 }
 impl<'src, S, L: Language<'src, S>> Module<'src, S, L> {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             id: MODULE_ID.fetch_add(1, Ordering::Relaxed),
             glbs: ConVec::new(),
             insts: ConVec::new(),
@@ -147,7 +152,7 @@ pub enum Operand<'src, S, L: Language<'src, S>> {
 pub struct Global<'src, S, L: Language<'src, S>> {
     pub name: String,
     #[derivative(Debug = "ignore")]
-    blocks: ConVec<Block<'src, S, L>>,
+    pub blocks: ConVec<Block<'src, S, L>>,
 }
 impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
     pub fn new(name: String) -> Self {
@@ -166,16 +171,32 @@ impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
         self.blocks.iter()
     }
 }
+impl<'src, S, L: Language<'src, S>> Index<BlockId<'src, S, L>> for Global<'src, S, L> {
+    type Output = Block<'src, S, L>;
+
+    fn index(&self, index: BlockId<'src, S, L>) -> &Self::Output {
+        self.get_blk(index).unwrap()
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(
     Debug(bound = "L::Terminator: Debug"),
-    Clone(bound = "L::Terminator: Clone"),
     Default(bound = "L::Terminator: Default")
 )]
 pub struct Block<'src, S, L: Language<'src, S>> {
+    pub name: Cow<'src, str>,
     pub insts: Vec<InstId<'src, S, L>>,
-    pub term: L::Terminator,
+    pub term: SyncCell<L::Terminator>,
+}
+impl<'src, S, L: Language<'src, S>> Block<'src, S, L> {
+    pub fn new(name: impl Into<Cow<'src, str>>) -> Self where L::Terminator: Default {
+        Self {
+            name: name.into(),
+            insts: vec![],
+            term: Default::default(),
+        }
+    }
 }
 
 #[derive(Derivative)]
@@ -185,6 +206,7 @@ pub struct Block<'src, S, L: Language<'src, S>> {
     PartialEq(bound = "S: PartialEq, L::InstKind: PartialEq")
 )]
 pub struct Instruction<'src, S, L: Language<'src, S>> {
+    pub name: Cow<'src, str>,
     pub span: S,
     pub kind: L::InstKind,
 }

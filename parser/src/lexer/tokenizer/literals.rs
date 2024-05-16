@@ -8,7 +8,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         }
         let mut int = 0;
         let mul = if neg { -1 } else { 1 };
-        let base = kind as u8 as i128;
+        let base = kind as u8 as i64;
         loop {
             let Some(&c) = self.input.get(self.index) else {
                 self.tokens.push(Token {
@@ -29,17 +29,17 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                         });
                     }
                     int *= base;
-                    int += x as i128;
+                    int += x as i64;
                 }
                 b'a'..=b'f' if kind == LitKind::Hex => {
                     int *= 16;
                     int += 10;
-                    int += (c - b'a') as i128;
+                    int += (c - b'a') as i64;
                 }
                 b'A'..=b'F' if kind == LitKind::Hex => {
                     int *= 16;
                     int += 10;
-                    int += (c - b'A') as i128;
+                    int += (c - b'A') as i64;
                 }
                 b'.' if kind == LitKind::Decimal => break,
                 _ => {

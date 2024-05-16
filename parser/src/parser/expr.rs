@@ -70,6 +70,7 @@ where
     asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
     asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
     asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
@@ -124,6 +125,7 @@ where
             A::make_box(asts::CallAST {
                 func: A::make_box(asts::VarAST {
                     name: op.into(),
+                    global: None,
                     loc: span,
                 }),
                 arg: ast,
@@ -160,6 +162,7 @@ where
             }
             let func = A::make_box(asts::VarAST {
                 name: tok.kind.inf_op_str().unwrap().into(),
+                global: None,
                 loc: tok.span,
             });
             self.index += 1;
@@ -226,6 +229,7 @@ where
                 _ => {
                     let func = A::make_box(asts::VarAST {
                         name: op.into(),
+                        global: None,
                         loc,
                     });
                     let inter = A::make_box(asts::CallAST { func, arg: lhs });
@@ -758,11 +762,27 @@ where
         self.index += 1;
         match self.input.get(self.index - 1) {
             Some(&Token {
+                kind: TokenKind::Special(SpecialChar::Dot),
+                span,
+            }) => {
+                let (Some((id, loc)), ret) = self.parse_ident(true, out) else {
+                    unreachable!()
+                };
+                (
+                    A::make_box(asts::VarAST {
+                        name: id.into(),
+                        global: Some(loc),
+                        loc: span,
+                    }), ret
+                )
+            }
+            Some(&Token {
                 kind: TokenKind::Ident(i),
                 span,
             }) => (
                 A::make_box(asts::VarAST {
                     name: i.into(),
+                    global: None,
                     loc: span,
                 }),
                 false,
@@ -776,24 +796,32 @@ where
                 span,
             }) => (A::make_box(asts::FloatLitAST { val, loc: span }), false),
             Some(&Token {
+                kind: TokenKind::String(ref val),
+                span,
+            }) => (A::make_box(asts::StringLitAST { val: val.clone(), loc: span }), false),
+            Some(&Token {
                 kind: TokenKind::Open(Delim::Paren),
                 span: start,
             }) => match self.input.get(self.index) {
                 Some(&Token {
                     kind: TokenKind::Close(Delim::Paren),
                     span: end,
-                }) => (
-                    A::make_box(asts::NullAST {
-                        loc: start.merge(end),
-                    }),
-                    false,
-                ),
+                }) => {
+                    self.index += 1;
+                    (
+                        A::make_box(asts::NullAST {
+                            loc: start.merge(end),
+                        }),
+                        false,
+                    )
+                }
                 Some(_) => {
                     self.index -= 1;
                     if let Some((i, span)) = self.parse_ident(false, out).0 {
                         return (
                             A::make_box(asts::VarAST {
                                 name: i.into(),
+                                global: None,
                                 loc: span,
                             }),
                             false,

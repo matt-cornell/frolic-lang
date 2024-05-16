@@ -187,10 +187,10 @@ impl Runnable for FrolicDebugHir {
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
-        //let ast = parse_tl(&toks, file, &errs, HirAsts::new());
+        let ast = parse_tl(&toks, file, &errs, HirAsts::new());
 
-        //let module = HirModule::new(file.to_string());
-        // let hir = lower_to_hir(&ast, &errs, &module, None);
+        let module = HirModule::new(file.to_string());
+        lower_to_hir(&ast, &errs, &module, None);
 
         errs.into_inner().unwrap().into_result()?;
 
