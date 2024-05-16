@@ -7,7 +7,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::ParenAST<A> {
         loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
     ) -> (Operand<'src, Self::Span>, bool) {
         let (mut op, ret) = self.inner.local(glb, loc);
-        
+
         let inst = Instruction {
             name: "rebind".into(),
             span: self.loc(),

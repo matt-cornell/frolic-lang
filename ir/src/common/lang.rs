@@ -1,12 +1,12 @@
 use derivative::Derivative;
+use frolic_utils::synccell::SyncCell;
 use orx_concurrent_vec::ConcurrentVec as ConVec;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::Index;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::borrow::Cow;
-use frolic_utils::synccell::SyncCell;
 
 pub mod markers {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,7 +76,7 @@ pub struct Module<'src, S, L: Language<'src, S>> {
     pub name: String,
     id: usize,
     #[derivative(Debug = "ignore")]
-    glbs: ConVec<Global<'src, S, L>>,
+    pub(crate) glbs: ConVec<Global<'src, S, L>>,
     #[derivative(Debug = "ignore")]
     insts: ConVec<Instruction<'src, S, L>>,
 }
@@ -190,7 +190,10 @@ pub struct Block<'src, S, L: Language<'src, S>> {
     pub term: SyncCell<L::Terminator>,
 }
 impl<'src, S, L: Language<'src, S>> Block<'src, S, L> {
-    pub fn new(name: impl Into<Cow<'src, str>>) -> Self where L::Terminator: Default {
+    pub fn new(name: impl Into<Cow<'src, str>>) -> Self
+    where
+        L::Terminator: Default,
+    {
         Self {
             name: name.into(),
             insts: vec![],

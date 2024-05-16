@@ -150,7 +150,6 @@ pub struct FrolicDebugHir {
     pub source: Source,
 }
 impl Runnable for FrolicDebugHir {
-    #[allow(unused_variables, unused_mut)]
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
         self,
         _stdin: I,
@@ -191,6 +190,8 @@ impl Runnable for FrolicDebugHir {
 
         let module = HirModule::new(file.to_string());
         lower_to_hir(&ast, &errs, &module, None);
+
+        writeln!(stdout, "{module}")?;
 
         errs.into_inner().unwrap().into_result()?;
 

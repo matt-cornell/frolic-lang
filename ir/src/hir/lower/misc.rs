@@ -69,9 +69,12 @@ impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::VarAST<'src, S> {
                 return (Operand::Global(val), false);
             }
         }
-        (Operand::Constant(Constant::Error), (glb.report)(HirError::UnresolvedName {
-            name: self.name.clone(),
-            span: self.loc(),
-        }))
+        (
+            Operand::Constant(Constant::Error),
+            (glb.report)(HirError::UnresolvedName {
+                name: self.name.clone(),
+                span: self.loc(),
+            }),
+        )
     }
 }

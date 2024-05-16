@@ -18,7 +18,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::FunctionTypeAST<
         let inst = Instruction {
             name: "".into(),
             span: self.loc(),
-            kind: InstKind::FunctionTy { arg, ret }
+            kind: InstKind::FunctionTy { arg, ret },
         };
 
         let i = glb.module.intern_inst(inst);

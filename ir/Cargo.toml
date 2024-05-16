@@ -5,6 +5,7 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+bstr.workspace = true
 derivative = "2.2.0"
 either = "1.11.0"
 frolic-ast.workspace = true

@@ -1,7 +1,7 @@
 use frolic_utils::prelude::*;
 use miette::Diagnostic;
-use thiserror::Error;
 use std::borrow::Cow;
+use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
 pub enum HirError<'src, S: Span> {

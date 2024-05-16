@@ -773,7 +773,8 @@ where
                         name: id.into(),
                         global: Some(loc),
                         loc: span,
-                    }), ret
+                    }),
+                    ret,
                 )
             }
             Some(&Token {
@@ -798,7 +799,13 @@ where
             Some(&Token {
                 kind: TokenKind::String(ref val),
                 span,
-            }) => (A::make_box(asts::StringLitAST { val: val.clone(), loc: span }), false),
+            }) => (
+                A::make_box(asts::StringLitAST {
+                    val: val.clone(),
+                    loc: span,
+                }),
+                false,
+            ),
             Some(&Token {
                 kind: TokenKind::Open(Delim::Paren),
                 span: start,

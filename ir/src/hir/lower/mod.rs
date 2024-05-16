@@ -17,8 +17,9 @@ use thread_local::ThreadLocal;
 mod error;
 pub use error::HirError;
 
-
-const fn const_err<'a, S: Span>() -> Operand<'a, S> { Operand::Constant(Constant::Error) }
+const fn const_err<'a, S: Span>() -> Operand<'a, S> {
+    Operand::Constant(Constant::Error)
+}
 
 mod defs;
 mod flow;
@@ -115,9 +116,14 @@ pub struct LocalInLocalContext<'a, 'src: 'a, S> {
     pub scope_name: Vec<Cow<'src, str>>,
 }
 impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
-    pub fn new(insert_func: GlobalId<'src, S>, insert_blk: Block<'src, S>, from: LocalInGlobalContext<'src, S>) -> Self {
+    pub fn new(
+        insert_func: GlobalId<'src, S>,
+        insert_blk: Block<'src, S>,
+        from: LocalInGlobalContext<'src, S>,
+    ) -> Self {
         Self {
-            insert_func, insert_blk,
+            insert_func,
+            insert_blk,
             resolve_blks: Vec::new(),
             globals: from.globals,
             locals: Scopes::new_single(),
@@ -138,7 +144,11 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
             scope_name: self.scope_name,
         }
     }
-    pub fn push_swap_blk(&mut self, module: &Module<'src, S>, blk: Block<'src, S>) -> BlockId<'src, S> {
+    pub fn push_swap_blk(
+        &mut self,
+        module: &Module<'src, S>,
+        blk: Block<'src, S>,
+    ) -> BlockId<'src, S> {
         let old = std::mem::replace(&mut self.insert_blk, blk);
         let id = module[self.insert_func].push_blk(old);
         self.resolve_blks.drain(..).for_each(|b| b.set(id));
@@ -183,7 +193,13 @@ pub trait ToHir<'src, F: Copy>: Located {
         glb: &GlobalContext<'g, 'src, Self::Span, F>,
         _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
     ) -> (Operand<'src, Self::Span>, bool) {
-        (const_err(), (glb.report)(HirError::GlobalAtLocal { kind: std::any::type_name::<Self>(), span: self.loc() }))
+        (
+            const_err(),
+            (glb.report)(HirError::GlobalAtLocal {
+                kind: std::any::type_name::<Self>(),
+                span: self.loc(),
+            }),
+        )
     }
 
     /// Lower to HIR. Returns `true` as the second value if the reporter says there was a critical failure.
@@ -194,7 +210,10 @@ pub trait ToHir<'src, F: Copy>: Located {
         glb: &GlobalContext<'_, 'src, Self::Span, F>,
         _loc: &mut LocalInGlobalContext<'src, Self::Span>,
     ) -> bool {
-        (glb.report)(HirError::LocalAtGlobal { kind: std::any::type_name::<Self>(), span: self.loc() })
+        (glb.report)(HirError::LocalAtGlobal {
+            kind: std::any::type_name::<Self>(),
+            span: self.loc(),
+        })
     }
 
     /// Alternate version of `to_hir` that takes a `SyncGlobalContext`. This is only really
