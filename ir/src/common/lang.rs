@@ -19,10 +19,16 @@ pub mod markers {
     pub struct Module;
 }
 
-pub trait Language<'src, S> {
+pub trait Language<'src, S>: Sized {
     type Constant;
     type InstKind;
-    type Terminator;
+    type Terminator: IsReturn<'src, S, Self>;
+}
+
+pub trait IsReturn<'src, S, L: Language<'src, S>> {
+    fn is_return(&self) -> Option<Operand<'src, S, L>> {
+        None
+    }
 }
 
 pub type GlobalId<'src, S, L> = Id<PhantomData<(&'src L, markers::Global, S)>>;
@@ -169,6 +175,12 @@ impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
     }
     pub fn blocks(&self) -> impl Iterator<Item = &Block<'src, S, L>> {
         self.blocks.iter()
+    }
+    pub fn as_alias(&self) -> Option<Operand<'src, S, L>> {
+        (self.blocks.len() == 1).then(|| {
+            let b = self.blocks.get(0).unwrap();
+            (b.insts.is_empty()).then(|| b.term.with(|t| t.is_return())).flatten()
+        }).flatten()
     }
 }
 impl<'src, S, L: Language<'src, S>> Index<BlockId<'src, S, L>> for Global<'src, S, L> {

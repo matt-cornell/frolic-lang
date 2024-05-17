@@ -43,6 +43,17 @@ pub enum Constant<'src> {
     String(Cow<'src, [u8]>),
 }
 
+impl<'src, S> lang::IsReturn<'src, S, Hir> for Terminator<'src, S> {
+    #[inline]
+    fn is_return(&self) -> Option<Operand<'src, S>> {
+        if let Self::Return(op) = self {
+            Some(op.clone())
+        } else {
+            None
+        }
+    }
+}
+
 impl<'a, 'src, S> disp::DispWithContext<(&'a Module<'src, S>, &'a Global<'src, S>)>
     for InstKind<'src, S>
 {

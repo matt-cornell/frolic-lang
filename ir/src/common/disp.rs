@@ -49,6 +49,7 @@ impl<'a, 'src, S, L: Language<'src, S>>
     DispWithContext<(&'a Module<'src, S, L>, GlobalId<'src, S, L>)> for &'a Global<'src, S, L>
 where
     L::InstKind: DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
+    L::Constant: DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
     L::Terminator: DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
 {
     fn fmt(
@@ -56,25 +57,33 @@ where
         context: (&'a Module<'src, S, L>, GlobalId<'src, S, L>),
         f: &mut Formatter<'_>,
     ) -> fmt::Result {
-        writeln!(
+        write!(
             f,
-            "let {} {{",
+            "let {} ",
             WithContext {
                 value: context.1,
                 context: context.0,
             }
         )?;
-        for (n, blk) in self.blocks.iter().enumerate() {
-            write!(
-                f,
-                "{}",
-                WithContext {
-                    value: blk,
-                    context: (context.0, *self, BlockId::new(n)),
-                }
-            )?;
+        if let Some(op) = self.as_alias() {
+            writeln!(f, "= {}", WithContext {
+                value: op,
+                context: (context.0, *self),
+            })
+        } else {
+            writeln!(f, "{{")?;
+            for (n, blk) in self.blocks.iter().enumerate() {
+                write!(
+                    f,
+                    "{}",
+                    WithContext {
+                        value: blk,
+                        context: (context.0, *self, BlockId::new(n)),
+                    }
+                )?;
+            }
+            writeln!(f, "}}")
         }
-        f.write_str("}\n")
     }
 }
 
@@ -215,6 +224,7 @@ where
 impl<'src, S, L: Language<'src, S>> Display for Module<'src, S, L>
 where
     L::InstKind: for<'a> DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
+    L::Constant: for<'a> DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
     L::Terminator: for<'a> DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
