@@ -28,6 +28,7 @@ mod groups;
 mod lits;
 mod misc;
 mod op;
+mod types;
 
 /// Global context for HIR lowering.
 #[derive(Derivative)]

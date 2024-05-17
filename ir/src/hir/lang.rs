@@ -16,6 +16,14 @@ pub enum InstKind<'src, S> {
         arg: Operand<'src, S>,
         ret: Operand<'src, S>,
     },
+    Cast {
+        val: Operand<'src, S>,
+        ty: Operand<'src, S>,
+    },
+    Ascribe {
+        val: Operand<'src, S>,
+        ty: Operand<'src, S>,
+    },
     Bind(Operand<'src, S>),
     Phi(SmallVec<[(BlockId<'src, S>, Operand<'src, S>); 2]>),
 }
@@ -93,6 +101,30 @@ impl<'a, 'src, S> disp::DispWithContext<(&'a Module<'src, S>, &'a Global<'src, S
                 disp::WithContext {
                     value: ret,
                     context
+                }
+            ),
+            Self::Cast { val, ty } => write!(
+                f,
+                "cast {} to {}",
+                disp::WithContext {
+                    value: val,
+                    context,
+                },
+                disp::WithContext {
+                    value: ty,
+                    context,
+                }
+            ),
+            Self::Ascribe { val, ty } => write!(
+                f,
+                "asc {} to {}",
+                disp::WithContext {
+                    value: val,
+                    context,
+                },
+                disp::WithContext {
+                    value: ty,
+                    context,
                 }
             ),
             Self::Bind(op) => write!(

@@ -17,6 +17,8 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::AscribeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CastAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     fn parse_dottedname(

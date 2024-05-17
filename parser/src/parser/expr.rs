@@ -79,6 +79,8 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::AscribeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CastAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     fn parse_prefix_expr(
@@ -290,7 +292,29 @@ where
         infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (A::AstBox<'src>, bool) {
-        self.parse_fns_expr(necessary, prefixes, infixes, out)
+        let (val, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+        if err {
+            return (val, true);
+        }
+        match self.current_token() {
+            Some(&Token { kind: TokenKind::Keyword(Keyword::Of), span }) => {
+                self.index += 1;
+                let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+                (A::make_box(asts::AscribeAST {
+                    kw: span,
+                    val, ty,
+                }), err)
+            },
+            Some(&Token { kind: TokenKind::Keyword(Keyword::As), span }) => {
+                self.index += 1;
+                let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+                (A::make_box(asts::CastAST {
+                    kw: span,
+                    val, ty,
+                }), err)
+            },
+            _ => (val, false)
+        }
     }
 
     fn parse_cond_expr(

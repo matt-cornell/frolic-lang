@@ -33,6 +33,8 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::AscribeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CastAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     /// Create a new parser
@@ -334,6 +336,8 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::AscribeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CastAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
@@ -366,6 +370,8 @@ where
     asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::AscribeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    asts::CastAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
     asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
