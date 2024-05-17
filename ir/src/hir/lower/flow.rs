@@ -48,7 +48,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::IfElseAST<A> {
             "ICE: modified insert function in the middle of if/else"
         );
 
-        let if_false = loc.push_swap_blk(&glb.module, Block::new("if_false"));
+        let if_false = loc.push_swap_blk(&glb.module, Block::new("merge"));
 
         let func = &glb.module[f];
         func[cond_blk].term.set(Terminator::CondBr {
