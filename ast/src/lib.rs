@@ -13,5 +13,6 @@ pub mod prelude {
         pub use crate::asts::lits::*;
         pub use crate::asts::misc::*;
         pub use crate::asts::op::*;
+        pub use crate::asts::types::*;
     }
 }
