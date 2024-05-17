@@ -127,87 +127,89 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
         };
         debug_assert_eq!(fid.module, glb.module.id(), "ICE: inserted global from a different module");
 
-        if let Some((last, rest)) = self.params.split_last() {
-            if let Some((first, rest)) = rest.split_first() {
-                // this takes the number of previously curried arguments!
-                let get_curried = |n| {
-                    let mangled = format!("{mangled}.#{n}");
-                    if let Some(id) = glb.symbols.get(&mangled) {
-                        debug_assert_eq!(id.module, glb.module.id(), "ICE: inserted global from a different module");
-                        Ok(id.id)
-                    } else {
-                        Err((glb.report)(HirError::MangledGlobalNotFound {
-                            name: mangled,
-                            span: self.loc(),
-                        }))
+        loc.with_pushed_name(&self.name, |loc| {
+            if let Some((last, rest)) = self.params.split_last() {
+                if let Some((first, rest)) = rest.split_first() {
+                    // this takes the number of previously curried arguments!
+                    let get_curried = |n| {
+                        let mangled = format!("{mangled}.#{n}");
+                        if let Some(id) = glb.symbols.get(&mangled) {
+                            debug_assert_eq!(id.module, glb.module.id(), "ICE: inserted global from a different module");
+                            Ok(id.id)
+                        } else {
+                            Err((glb.report)(HirError::MangledGlobalNotFound {
+                                name: mangled,
+                                span: self.loc(),
+                            }))
+                        }
+                    };
+
+                    let lid = match get_curried(self.params.len() - 1) {
+                        Ok(id) => id,
+                        Err(erred) => return erred,
+                    };
+
+                    let mut loc_ = LocalInLocalContext::new(lid, Block::new("entry"), std::mem::take(loc));
+                    let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
+
+                    let mut add_arg = |param: &asts::FnParam<'src, A>, id| {
+                        let inst = Instruction {
+                            name: param.name.clone(),
+                            span: param.loc,
+                            kind: InstKind::ArgOf { func: id },
+                        };
+                        let iid = glb.module.intern_inst(inst);
+                        loc_.push_inst(iid);
+                        loc_.locals.insert(param.name.clone(), iid);
+                        stack.push(id);
+                    };
+                    add_arg(first, fid.id);
+
+                    for (n, param) in rest.iter().enumerate() {
+                        match get_curried(n + 1) {
+                            Ok(mid) => add_arg(param, mid),
+                            Err(true) => {
+                                *loc = loc_.to_global(glb.module);
+                                return true;
+                            },
+                            Err(false) => {}
+                        }
                     }
-                };
 
-                let lid = match get_curried(self.params.len() - 1) {
-                    Ok(id) => id,
-                    Err(erred) => return erred,
-                };
+                    add_arg(last, lid);
+                    let (op, erred) = self.body.local(glb, &mut loc_);
+                    loc_.block_term().set(Terminator::Return(op));
 
-                let mut loc_ = LocalInLocalContext::new(lid, Block::new("entry"), std::mem::take(loc));
-                let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
+                    for &[caller, callee] in stack.array_windows() {
+                        loc_.goto_pushed_in(caller, Block::with_term("entry", Terminator::Return(Operand::Global(callee))), glb.module);
+                    }
 
-                let mut add_arg = |param: &asts::FnParam<'src, A>, id| {
+                    *loc = loc_.to_global(glb.module);
+                    erred
+                } else {
+                    let mut loc_ = LocalInLocalContext::new(fid.id, Block::new("entry"), std::mem::take(loc));
+                    
                     let inst = Instruction {
-                        name: param.name.clone(),
-                        span: param.loc,
-                        kind: InstKind::ArgOf { func: id },
+                        name: last.name.clone(),
+                        span: last.loc,
+                        kind: InstKind::ArgOf { func: fid.id },
                     };
                     let iid = glb.module.intern_inst(inst);
                     loc_.push_inst(iid);
-                    loc_.locals.insert(param.name.clone(), iid);
-                    stack.push(id);
-                };
-                add_arg(first, fid.id);
+                    loc_.locals.insert(last.name.clone(), iid);
 
-                for (n, param) in rest.iter().enumerate() {
-                    match get_curried(n + 1) {
-                        Ok(mid) => add_arg(param, mid),
-                        Err(true) => {
-                            *loc = loc_.to_global(glb.module);
-                            return true;
-                        },
-                        Err(false) => {}
-                    }
+                    let (op, erred) = self.body.local(glb, &mut loc_);
+                    loc_.block_term().set(Terminator::Return(op));
+                    *loc = loc_.to_global(glb.module);
+                    erred
                 }
-
-                add_arg(last, lid);
-                let (op, erred) = self.body.local(glb, &mut loc_);
-                loc_.block_term().set(Terminator::Return(op));
-
-                for &[caller, callee] in stack.array_windows() {
-                    loc_.goto_pushed_in(caller, Block::with_term("entry", Terminator::Return(Operand::Global(callee))), glb.module);
-                }
-
-                *loc = loc_.to_global(glb.module);
-                erred
             } else {
                 let mut loc_ = LocalInLocalContext::new(fid.id, Block::new("entry"), std::mem::take(loc));
-                
-                let inst = Instruction {
-                    name: last.name.clone(),
-                    span: last.loc,
-                    kind: InstKind::ArgOf { func: fid.id },
-                };
-                let iid = glb.module.intern_inst(inst);
-                loc_.push_inst(iid);
-                loc_.locals.insert(last.name.clone(), iid);
-
                 let (op, erred) = self.body.local(glb, &mut loc_);
                 loc_.block_term().set(Terminator::Return(op));
                 *loc = loc_.to_global(glb.module);
                 erred
             }
-        } else {
-            let mut loc_ = LocalInLocalContext::new(fid.id, Block::new("entry"), std::mem::take(loc));
-            let (op, erred) = self.body.local(glb, &mut loc_);
-            loc_.block_term().set(Terminator::Return(op));
-            *loc = loc_.to_global(glb.module);
-            erred
-        }
+        })
     }
 }

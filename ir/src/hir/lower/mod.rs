@@ -66,6 +66,17 @@ impl<'a, 'src, S: Span, F: Copy> SyncGlobalContext<'a, 'src, S, F> {
     }
 }
 
+#[derive(Debug, PartialEq)]
+enum ScopeRestoreInner<'src> {
+    Truncate(usize),
+    Replace(Vec<Cow<'src, str>>),
+}
+
+#[derive(Debug, PartialEq)]
+pub struct ScopeRestore<'src> {
+    inner: ScopeRestoreInner<'src>
+}
+
 /// Local context for HIR lowering.
 #[derive(Debug, Clone)]
 pub struct LocalInGlobalContext<'src, S> {
@@ -98,6 +109,40 @@ impl<'src, S> LocalInGlobalContext<'src, S> {
             let _ = write!(out, ".{s}");
             out
         })
+    }
+    pub fn push_name(&mut self, name: &DottedName<'src, S>) -> ScopeRestore<'src> {
+        let it = name.segs.iter().map(|n| n.0.clone());
+        if name.global.is_some() {
+            ScopeRestore {
+                inner: ScopeRestoreInner::Replace(
+                    std::mem::replace(&mut self.scope_name, it.collect())
+                )
+            }
+        } else {
+            let old_len = self.scope_name.len();
+            self.scope_name.extend(it);
+            ScopeRestore { inner: ScopeRestoreInner::Truncate(old_len) }
+        }
+    }
+    pub fn restore_name(&mut self, res: ScopeRestore<'src>) {
+        match res.inner {
+            ScopeRestoreInner::Replace(rep) => {
+                if rep.capacity() > self.scope_name.capacity() {
+                    self.scope_name = rep;
+                } else {
+                    self.scope_name.clear();
+                    self.scope_name.extend(rep);
+                }
+            }
+            ScopeRestoreInner::Truncate(len) => self.scope_name.truncate(len),
+        }
+    }
+    #[inline]
+    pub fn with_pushed_name<R, F: FnOnce(&mut Self) -> R>(&mut self, name: &DottedName<'src, S>, f: F) -> R {
+        let res = self.push_name(name);
+        let ret = f(self);
+        self.restore_name(res);
+        ret
     }
 }
 impl<S> Default for LocalInGlobalContext<'_, S> {
@@ -213,6 +258,40 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
         });
         let _ = write!(out, "{suffix}");
         out
+    }
+    pub fn push_name(&mut self, name: &DottedName<'src, S>) -> ScopeRestore<'src> {
+        let it = name.segs.iter().map(|n| n.0.clone());
+        if name.global.is_some() {
+            ScopeRestore {
+                inner: ScopeRestoreInner::Replace(
+                    std::mem::replace(&mut self.scope_name, it.collect())
+                )
+            }
+        } else {
+            let old_len = self.scope_name.len();
+            self.scope_name.extend(it);
+            ScopeRestore { inner: ScopeRestoreInner::Truncate(old_len) }
+        }
+    }
+    pub fn restore_name(&mut self, res: ScopeRestore<'src>) {
+        match res.inner {
+            ScopeRestoreInner::Replace(rep) => {
+                if rep.capacity() > self.scope_name.capacity() {
+                    self.scope_name = rep;
+                } else {
+                    self.scope_name.clear();
+                    self.scope_name.extend(rep);
+                }
+            }
+            ScopeRestoreInner::Truncate(len) => self.scope_name.truncate(len),
+        }
+    }
+    #[inline]
+    pub fn with_pushed_name<R, F: FnOnce(&mut Self) -> R>(&mut self, name: &DottedName<'src, S>, f: F) -> R {
+        let res = self.push_name(name);
+        let ret = f(self);
+        self.restore_name(res);
+        ret
     }
 }
 

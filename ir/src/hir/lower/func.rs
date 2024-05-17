@@ -8,6 +8,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LambdaAST<'src, 
     ) -> (Operand<'src, Self::Span>, bool) {
         let bloc = self.body.loc();
         loc.scope_name.push(format!("[\\{}-{}]", bloc.offset(), bloc.offset() + bloc.end()).into());
+        loc.locals.push_new_scope();
         let gid = glb.module.push_global(Global::new(loc.glb_segs_base("")));
         let erred = loc.with_new_loc(gid, Block::new("entry"), glb.module, |loc| {
             let inst = Instruction {
@@ -23,6 +24,8 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LambdaAST<'src, 
             loc.block_term().set(Terminator::Return(ret));
             erred
         });
+        loc.scope_name.pop();
+        loc.locals.pop_scope();
         (Operand::Global(gid), erred)
     }
 }

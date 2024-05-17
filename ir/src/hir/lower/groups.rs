@@ -9,7 +9,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::ParenAST<A> {
         let (mut op, ret) = self.inner.local(glb, loc);
 
         let inst = Instruction {
-            name: "rebind".into(),
+            name: "()".into(),
             span: self.loc(),
             kind: InstKind::Bind(op),
         };
