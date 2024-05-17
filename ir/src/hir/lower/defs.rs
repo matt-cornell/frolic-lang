@@ -1,21 +1,94 @@
 use super::*;
 use smallvec::SmallVec;
 
-// TODO: implement
 impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> {
-    /*fn local<'l, 'g: 'l>(
+    fn local<'l, 'g: 'l>(
         &self,
         glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
+        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
     ) -> (Operand<'src, Self::Span>, bool) {
-        (
-            const_err(),
-            (glb.report)(HirError::GlobalAtLocal {
-                kind: std::any::type_name::<Self>(),
-                span: self.loc(),
-            }),
-        )
-    }*/
+        if self.name.segs.len() != 1 && self.name.global.is_some() {
+            let erred = (glb.report)(HirError::GlobalDefAtLocal {
+                span: self.name.loc()
+            });
+            if erred {
+                return (const_err(), true);
+            }
+        }
+        let &(ref name, span) = self.name.segs.last().expect("ICE: empty variable name");
+        if let Some((last, rest)) = self.params.split_last() {
+            loc.scope_name.push(name.clone());
+            loc.locals.push_new_scope();
+            let ret = if let Some((first, rest)) = rest.split_first() {
+                let base = loc.glb_segs_base("");
+                let fid = glb.module.push_global(Global::new(base.clone()));
+                let mut stack = Vec::with_capacity(self.params.len());
+                let lid = glb.module.push_global(Global::new(format!("{base}.#{}", rest.len())));
+                let erred = loc.with_new_loc(lid, Block::new("entry"), glb.module, |loc| {
+                    let mut add_arg = |param: &asts::FnParam<'src, A>, id| {
+                        let inst = Instruction {
+                            name: param.name.clone(),
+                            span: param.loc,
+                            kind: InstKind::ArgOf { func: id },
+                        };
+                        let iid = glb.module.intern_inst(inst);
+                        loc.push_inst(iid);
+                        loc.locals.insert(param.name.clone(), iid);
+                        stack.push(id);
+                    };
+                    add_arg(first, fid);
+                    for (n, param) in rest.iter().enumerate() {
+                        let id = glb.module.push_global(Global::new(format!("{base}.#{}", n + 1)));
+                        add_arg(param, id);
+                    }
+                    add_arg(last, lid);
+
+                    let (ret, erred) = self.body.local(glb, loc);
+                    loc.block_term().set(Terminator::Return(ret));
+                    erred
+                });
+
+                for &[caller, callee] in stack.array_windows() {
+                    loc.with_new_loc(caller, Block::new("entry"), glb.module, |loc| loc.block_term().set(Terminator::Return(Operand::Global(callee))));
+                }
+
+                (Operand::Global(fid), erred)
+            } else {
+                let gid = glb.module.push_global(Global::new(loc.glb_segs_base("")));
+
+                let inst = Instruction {
+                    name: last.name.clone(),
+                    span: last.loc,
+                    kind: InstKind::ArgOf { func: gid },
+                };
+                let i = glb.module.intern_inst(inst);
+                loc.locals.insert(last.name.clone(), i);
+
+                let erred = loc.with_new_loc(gid, Block::new("entry"), glb.module, |loc| {
+                    loc.push_inst(i);
+                    let (ret, erred) = self.body.local(glb, loc);
+                    loc.block_term().set(Terminator::Return(ret));
+                    erred
+                });
+
+                (Operand::Global(gid), erred)
+            };
+            loc.scope_name.pop();
+            loc.locals.pop_scope();
+            ret
+        } else {
+            let (res, erred) = self.body.local(glb, loc);
+            let inst = Instruction {
+                name: name.clone(),
+                span,
+                kind: InstKind::Bind(res),
+            };
+            let i = glb.module.intern_inst(inst);
+            loc.push_inst(i);
+            loc.locals.insert(name.clone(), i);
+            (Operand::Instruction(i), erred)
+        }
+    }
     fn predef_global(&self, glb: &mut GlobalContext<'_, 'src, Self::Span, F>, loc: &mut LocalInGlobalContext<'src, Self::Span>) -> bool {
         let mangled = loc.glb_format(&self.name);
 
@@ -106,7 +179,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
                 let (op, erred) = self.body.local(glb, &mut loc_);
                 loc_.block_term().set(Terminator::Return(op));
 
-                for [caller, callee] in stack.windows(2).map(<[_; 2]>::try_from).map(Result::unwrap) {
+                for &[caller, callee] in stack.array_windows() {
                     loc_.goto_pushed_in(caller, Block::with_term("entry", Terminator::Return(Operand::Global(callee))), glb.module);
                 }
 

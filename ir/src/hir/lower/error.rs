@@ -11,6 +11,11 @@ pub enum HirError<'src, S: Span> {
         #[label]
         span: S,
     },
+    #[error("Global variable defined at local scope")]
+    GlobalDefAtLocal {
+        #[label("defined here")]
+        span: S,
+    },
     #[error("ICE: `{kind}` was used which must be done at local scope, but was at global scope")]
     LocalAtGlobal {
         kind: &'static str,
