@@ -1,5 +1,6 @@
 use super::*;
 use smallvec::smallvec;
+use std::borrow::Cow;
 
 impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
@@ -77,10 +78,35 @@ where
         }
     }
 
+    fn get_docs(&self) -> Cow<'src, [u8]> {
+        let mut out = Cow::Borrowed(&[][..]);
+        let mut index = self.index;
+        while let Some(idx) = index.checked_sub(1) {
+            index = idx;
+            match self.input[idx].kind {
+                TokenKind::Comment(_, CommentKind::Ignore) => {},
+                TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
+                    if !comm.is_empty() {
+                        if out.is_empty() {
+                            out = comm.clone();
+                        } else {
+                            let r = out.to_mut();
+                            r.push(b'\n');
+                            r.extend_from_slice(&comm);
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+        out
+    }
+
     pub fn parse_let_decl(
         &mut self,
         out: &mut Vec<A::AstBox<'src>>,
     ) -> (Option<asts::LetAST<'src, A::AstBox<'src>>>, bool) {
+        let doc = self.get_docs();
         let kw = self.input[self.index].span;
         self.index += 1;
         let name = {
@@ -90,6 +116,7 @@ where
                     return (
                         Some(asts::LetAST {
                             kw,
+                            doc,
                             name,
                             params: smallvec![],
                             ret: None,
@@ -111,6 +138,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -136,6 +164,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -152,6 +181,7 @@ where
                                 return (
                                     Some(asts::LetAST {
                                         kw,
+                                        doc,
                                         name,
                                         params,
                                         ret: None,
@@ -193,6 +223,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -215,6 +246,7 @@ where
                             return (
                                 Some(asts::LetAST {
                                     kw,
+                                    doc,
                                     name,
                                     params,
                                     ret: None,
@@ -253,6 +285,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -273,6 +306,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -287,6 +321,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -309,6 +344,7 @@ where
                             return (
                                 Some(asts::LetAST {
                                     kw,
+                                    doc,
                                     name,
                                     params,
                                     ret: None,
@@ -357,6 +393,7 @@ where
                 return (
                     Some(asts::LetAST {
                         kw,
+                        doc,
                         name,
                         params,
                         ret: None,
@@ -383,6 +420,7 @@ where
             return (
                 Some(asts::LetAST {
                     kw,
+                    doc,
                     name,
                     params,
                     ret,
@@ -396,6 +434,7 @@ where
         (
             Some(asts::LetAST {
                 kw,
+                doc,
                 name,
                 params,
                 ret,

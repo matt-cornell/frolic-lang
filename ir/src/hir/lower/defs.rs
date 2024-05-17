@@ -103,7 +103,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
             }
         }
 
-        let id = glb.module.push_global(Global::new(mangled.clone()));
+        let id = glb.module.push_global(Global::with_doc(mangled.clone(), self.doc.clone()));
         glb.symbols.insert(mangled, UniversalGlobalId {
             id, module: glb.module.id(),
             file: glb.file, span: self.name.loc(),

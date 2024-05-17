@@ -2,11 +2,15 @@ use derivative::Derivative;
 use frolic_utils::synccell::SyncCell;
 use orx_concurrent_vec::ConcurrentVec as ConVec;
 use std::borrow::Cow;
-use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::ops::Index;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::fmt::{self, Debug, Formatter};
+
+fn bstr_debug<S: AsRef<[u8]>>(bytes: &S, f: &mut Formatter<'_>) -> fmt::Result {
+    Debug::fmt(bstr::BStr::new(bytes), f)
+}
 
 pub mod markers {
     #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
@@ -157,6 +161,8 @@ pub enum Operand<'src, S, L: Language<'src, S>> {
 #[derivative(Debug(bound = ""), Default(bound = ""))]
 pub struct Global<'src, S, L: Language<'src, S>> {
     pub name: String,
+    #[derivative(Debug(format_with = "bstr_debug"))]
+    pub doc: Cow<'src, [u8]>,
     #[derivative(Debug = "ignore")]
     pub blocks: ConVec<Block<'src, S, L>>,
 }
@@ -164,6 +170,14 @@ impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
     pub fn new(name: String) -> Self {
         Self {
             name,
+            doc: b"".into(),
+            blocks: ConVec::new(),
+        }
+    }
+    pub fn with_doc(name: String, doc: impl Into<Cow<'src, [u8]>>) -> Self {
+        Self {
+            name,
+            doc: doc.into(),
             blocks: ConVec::new(),
         }
     }

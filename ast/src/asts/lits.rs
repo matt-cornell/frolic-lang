@@ -29,9 +29,11 @@ impl<S: Span> Located for FloatLitAST<S> {
 }
 
 /// A string literal.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Derivative)]
+#[derivative(Debug, Clone, PartialEq)]
 pub struct StringLitAST<'src, S> {
     pub loc: S,
+    #[derivative(Debug(format_with = "bstr_debug"))] 
     pub val: Cow<'src, [u8]>,
 }
 impl<S: Span> Located for StringLitAST<'_, S> {
