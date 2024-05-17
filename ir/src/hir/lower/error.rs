@@ -23,4 +23,10 @@ pub enum HirError<'src, S: Span> {
         #[label]
         span: S,
     },
+    #[error("ICE: mangled name {name:?} was not found at global scope")]
+    MangledGlobalNotFound {
+        name: String,
+        #[label("defined by this definition")]
+        span: S,
+    }
 }

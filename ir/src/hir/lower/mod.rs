@@ -108,9 +108,10 @@ impl<S> Default for LocalInGlobalContext<'_, S> {
 
 #[derive(Debug)]
 pub struct LocalInLocalContext<'a, 'src: 'a, S> {
-    pub insert_func: GlobalId<'src, S>,
+    insert_func: GlobalId<'src, S>,
     insert_blk: Block<'src, S>,
     resolve_blks: Vec<SyncRef<'a, BlockId<'src, S>>>,
+    blks_base: usize,
     pub globals: Scopes<Cow<'src, str>, GlobalId<'src, S>>,
     pub locals: Scopes<Cow<'src, str>, InstId<'src, S>>,
     pub scope_name: Vec<Cow<'src, str>>,
@@ -125,10 +126,20 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
             insert_func,
             insert_blk,
             resolve_blks: Vec::new(),
+            blks_base: 0,
             globals: from.globals,
             locals: Scopes::new_single(),
             scope_name: from.scope_name,
         }
+    }
+    pub fn ins_func(&self) -> GlobalId<'src, S> {
+        self.insert_func
+    }
+    pub fn goto_pushed_in(&mut self, id: GlobalId<'src, S>, block: Block<'src, S>, module: &Module<'src, S>) {
+        let old = std::mem::replace(&mut self.insert_blk, block);
+        let old_func = std::mem::replace(&mut self.insert_func, id);
+        let blk_id = module[old_func].push_blk(old);
+        self.resolve_blks.drain(self.blks_base..).for_each(|b| b.set(blk_id));
     }
     pub fn block_term(&self) -> &SyncCell<Terminator<'src, S>> {
         &self.insert_blk.term
@@ -151,12 +162,29 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
     ) -> BlockId<'src, S> {
         let old = std::mem::replace(&mut self.insert_blk, blk);
         let id = module[self.insert_func].push_blk(old);
-        self.resolve_blks.drain(..).for_each(|b| b.set(id));
+        self.resolve_blks.drain(self.blks_base..).for_each(|b| b.set(id));
         id
     }
+    pub fn with_new_loc<R, F: FnOnce(&mut Self) -> R>(&mut self, func: GlobalId<'src, S>, blk: Block<'src, S>, module: &Module<'src, S>, f: F) -> R {
+        let old_start = std::mem::replace(&mut self.blks_base, self.resolve_blks.len());
+        let old_blk = std::mem::replace(&mut self.insert_blk, blk);
+        let old_func = std::mem::replace(&mut self.insert_func, func);
+
+        let ret = f(self);
+
+        self.blks_base = old_start;
+        self.insert_func = old_func;
+        let new_blk = std::mem::replace(&mut self.insert_blk, old_blk);
+        let bid = module[func].push_blk(new_blk);
+        self.resolve_blks.drain(old_start..).for_each(|b| b.set(bid));
+
+        ret
+    }
+
     pub fn push_inst(&mut self, id: InstId<'src, S>) {
         self.insert_blk.insts.push(id);
     }
+
     /// Take a name, and return an iterator over the segments of its global spec relative to the local position.
     pub fn glb_segs<'b>(
         &'b self,
@@ -177,6 +205,15 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
             out
         })
     }
+    pub fn glb_segs_base(&self, suffix: impl std::fmt::Display) -> String {
+        use std::fmt::Write;
+        let mut out = String::new();
+        self.scope_name.iter().for_each(|s| {
+            let _ = write!(out, ".{s}");
+        });
+        let _ = write!(out, "{suffix}");
+        out
+    }
 }
 
 /// Trait for lowering AST nodes.
@@ -184,7 +221,7 @@ impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
 pub trait ToHir<'src, F: Copy>: Located {
     /// Predefine globals. This is the only time a mutable handle to the global context is passed.
     /// Returns `true` if the reporter says there was a critical failure.
-    fn predef_global(&self, _glb: &mut GlobalContext<'_, 'src, Self::Span, F>) -> bool {
+    fn predef_global(&self, _glb: &mut GlobalContext<'_, 'src, Self::Span, F>, _loc: &mut LocalInGlobalContext<'src, Self::Span>) -> bool {
         false
     }
 
@@ -255,7 +292,7 @@ pub mod single_thread {
             report,
         };
         let mut loc = LocalInGlobalContext::new();
-        let _ = ast.nodes.iter().any(|n| n.predef_global(&mut glb))
+        let _ = ast.nodes.iter().any(|n| n.predef_global(&mut glb, &mut loc))
             || ast.nodes.iter().any(|n| n.global(&glb, &mut loc));
     }
 }
@@ -290,16 +327,16 @@ pub mod multi_thread {
             symbols: symbols.unwrap_or(&mut syms),
             report,
         };
-        let loc = ThreadLocal::new();
+        let mut loc = LocalInGlobalContext::new();
+        let erred = ast.nodes.iter().any(|n| n.predef_global(glb.as_unsync_mut(), &mut loc));
         // SAFETY: only one node at a time within a thread can be using the local context, with no
         // way to store it. Thread-local, so only one thread can be using a given context.
-        let _ = ast
-            .nodes
-            .iter()
-            .any(|n| n.predef_global(glb.as_unsync_mut()))
-            || ast.nodes.par_iter().with_min_len(32).any(|n| {
-                n.global_sync(&glb, unsafe { &mut *loc.get_or(UnsafeCell::default).get() })
+        if !erred {
+            let tl = ThreadLocal::new();
+            let _ = ast.nodes.par_iter().with_min_len(32).any(|n| {
+                n.global_sync(&glb, unsafe { &mut *tl.get_or(|| UnsafeCell::new(loc.clone())).get() })
             });
+        }
     }
 }
 

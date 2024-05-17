@@ -200,6 +200,13 @@ impl<'src, S, L: Language<'src, S>> Block<'src, S, L> {
             term: Default::default(),
         }
     }
+    pub fn with_term(name: impl Into<Cow<'src, str>>, term: L::Terminator) -> Self {
+        Self {
+            name: name.into(),
+            insts: vec![],
+            term: SyncCell::new(term),
+        }
+    }
 }
 
 #[derive(Derivative)]

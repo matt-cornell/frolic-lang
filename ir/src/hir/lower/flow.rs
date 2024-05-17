@@ -40,7 +40,7 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::IfElseAST<A> {
         let (if_false_val, erred) = if erred {
             (const_err(), true)
         } else {
-            self.cond.local(glb, loc)
+            self.if_false.local(glb, loc)
         };
 
         debug_assert_eq!(

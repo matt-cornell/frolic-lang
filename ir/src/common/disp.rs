@@ -218,8 +218,9 @@ where
     L::Terminator: for<'a> DispWithContext<(&'a Module<'src, S, L>, &'a Global<'src, S, L>)>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "# module {:?}", self.name)?;
+        writeln!(f, "# module {:?}", self.name)?;
         for (n, glb) in self.glbs.iter().enumerate() {
+            writeln!(f)?;
             write!(
                 f,
                 "{}",

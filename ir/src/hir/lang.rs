@@ -96,7 +96,7 @@ impl<'a, 'src, S> disp::DispWithContext<(&'a Module<'src, S>, &'a Global<'src, S
                 f.write_str("phi")?;
                 args.iter()
                     .try_fold(true, |first, (blk, val)| {
-                        if first {
+                        if !first {
                             f.write_str(",")?;
                         }
                         write!(

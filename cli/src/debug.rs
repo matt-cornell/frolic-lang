@@ -191,7 +191,7 @@ impl Runnable for FrolicDebugHir {
         let module = HirModule::new(file.to_string());
         lower_to_hir(&ast, &errs, &module, None);
 
-        writeln!(stdout, "{module}")?;
+        write!(stdout, "{module}")?;
 
         errs.into_inner().unwrap().into_result()?;
 
