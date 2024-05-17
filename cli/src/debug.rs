@@ -148,6 +148,8 @@ impl Runnable for FrolicDebugParse {
 pub struct FrolicDebugHir {
     #[command(flatten)]
     pub source: Source,
+    #[arg(short, long)]
+    pub include_input: bool,
 }
 impl Runnable for FrolicDebugHir {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -191,6 +193,7 @@ impl Runnable for FrolicDebugHir {
         let module = HirModule::new(file.to_string());
         lower_to_hir(&ast, &errs, &module, None);
 
+        writeln!(stdout, "#= source input:\n{}\n=#", bstr::BStr::new(file.contents()))?;
         write!(stdout, "{module}")?;
 
         errs.into_inner().unwrap().into_result()?;
