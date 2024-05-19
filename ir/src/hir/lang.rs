@@ -45,6 +45,7 @@ pub enum Terminator<'src, S> {
 pub enum Constant<'src> {
     #[default]
     Error,
+    Unknown,
     Null,
     Int(i64),
     Float(f64),
@@ -186,6 +187,7 @@ impl<'src, T: Copy> disp::DispWithContext<T> for Constant<'src> {
     fn fmt(&self, _context: T, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Error => f.write_str("error"),
+            Self::Unknown => f.write_str("unknown"),
             Self::Null => f.write_str("null"),
             Self::Int(v) => write!(f, "int {v}"),
             Self::Float(v) => write!(f, "float {v}"),

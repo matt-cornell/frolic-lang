@@ -95,7 +95,10 @@ impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> 
         if self.params.len() > 1 {
             for i in (1..=(self.params.len() - 1)).rev() {
                 let mangled = format!("{mangled}.#{i}");
-                let id = glb.module.push_global(Global::new(mangled.clone()));
+                let id = glb.module.push_global(Global::with_doc(
+                    mangled.clone(),
+                    self.doc.clone(),
+                    ));
                 glb.symbols.insert(mangled, UniversalGlobalId {
                     id, module: glb.module.id(),
                     file: glb.file, span: self.name.loc(),

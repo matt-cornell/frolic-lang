@@ -158,11 +158,12 @@ pub enum Operand<'src, S, L: Language<'src, S>> {
 }
 
 #[derive(Derivative)]
-#[derivative(Debug(bound = ""), Default(bound = ""))]
+#[derivative(Debug(bound = "L::Constant: Debug"), Default(bound = ""))]
 pub struct Global<'src, S, L: Language<'src, S>> {
     pub name: String,
     #[derivative(Debug(format_with = "bstr_debug"))]
     pub doc: Cow<'src, [u8]>,
+    pub ty: SyncCell<Option<Operand<'src, S, L>>>,
     #[derivative(Debug = "ignore")]
     pub blocks: ConVec<Block<'src, S, L>>,
 }
@@ -171,6 +172,7 @@ impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
         Self {
             name,
             doc: b"".into(),
+            ty: Default::default(),
             blocks: ConVec::new(),
         }
     }
@@ -178,6 +180,7 @@ impl<'src, S, L: Language<'src, S>> Global<'src, S, L> {
         Self {
             name,
             doc: doc.into(),
+            ty: Default::default(),
             blocks: ConVec::new(),
         }
     }
