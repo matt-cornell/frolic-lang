@@ -158,7 +158,7 @@ impl Runnable for FrolicDebugHir {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
-        let errs = Mutex::new(DiagnosticPrint::new(
+        /*let errs = Mutex::new(DiagnosticPrint::new(
             stderr,
             miette::GraphicalReportHandler::new(),
         ));
@@ -196,7 +196,7 @@ impl Runnable for FrolicDebugHir {
         writeln!(stdout, "#= source input:\n{}\n=#", bstr::BStr::new(file.contents()))?;
         write!(stdout, "{module}")?;
 
-        errs.into_inner().unwrap().into_result()?;
+        errs.into_inner().unwrap().into_result()?;*/
 
         Ok(())
     }

@@ -1,182 +1,215 @@
-use crate::common::{disp, lang};
-use smallvec::SmallVec;
-use std::borrow::Cow;
-use std::fmt::{self, Formatter};
+use crate::common::list::{LinkedList, LinkedListLink, LinkedListParent, LinkedListElem};
+use derivative::Derivative;
+use derive_more::*;
+use frolic_utils::synccell::SyncCell;
+use std::ops::{Deref, DerefMut};
+use orx_concurrent_vec::ConcurrentVec as CVec;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum InstKind<'src, S> {
-    Call {
-        func: Operand<'src, S>,
-        arg: Operand<'src, S>,
-    },
-    ArgOf {
-        func: GlobalId<'src, S>,
-    },
-    FunctionTy {
-        arg: Operand<'src, S>,
-        ret: Operand<'src, S>,
-    },
-    Bind(Operand<'src, S>),
-    Phi(SmallVec<[(BlockId<'src, S>, Operand<'src, S>); 2]>),
+fn ptr_opt<T>(val: &Option<&T>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    if let Some(ptr) = val {
+        write!(f, "{ptr:p}")
+    } else {
+        f.write_str("null")
+    }
 }
 
-#[derive(Debug, Default)]
-pub enum Terminator<'src, S> {
-    #[default]
-    Unreachable,
-    Return(Operand<'src, S>),
-    UncondBr(BlockId<'src, S>),
-    CondBr {
-        cond: Operand<'src, S>,
-        if_true: BlockId<'src, S>,
-        if_false: BlockId<'src, S>,
-    },
+/// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
+#[repr(transparent)]
+#[derive(Derivative)]
+#[derivative(Debug(bound=""), Clone(bound = ""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+pub struct Id<'b, T: 'b>(
+    #[derivative(Debug(format_with = "std::fmt::Pointer::fmt"), PartialEq(compare_with="std::ptr::eq"), Hash(hash_with="std::ptr::hash"))]
+    pub &'b T
+);
+pub type ModuleId<'b, S> = Id<'b, Module<'b, S>>;
+pub type GlobalId<'b, S> = Id<'b, Global<'b, S>>;
+pub type DefId<'b, S> = Id<'b, Definition<'b, S>>;
+pub type BlockId<'b, S> = Id<'b, Block<'b, S>>;
+pub type InstId<'b, S> = Id<'b, Inst<'b, S>>;
+
+pub struct Module<'b, S> {
+    pub name: &'b str,
+    pub globals: LinkedList<'b, Global<'b, S>>,
+}
+impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
+    type Elem = Global<'b, S>;
+
+    fn get_list(&'b self) -> &'b LinkedList<'b, Global<'b, S>> {
+        &self.globals
+    }
 }
 
-#[derive(Debug, Default, Clone, PartialEq)]
-pub enum Constant<'src> {
-    #[default]
+/// Something defined at global scope.
+#[derive(Debug)]
+pub enum Global<'b, S> {
+    Namespace(Namespace<'b, S>),
+    Definition(Definition<'b, S>),
+    Overload(Overload<'b, S>),
+}
+impl<'b, S> Deref for Global<'b, S> {
+    type Target = GlobalCommon<'b, S>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Namespace(n) => &n,
+            Self::Definition(d) => &d,
+            Self::Overload(o) => &o,
+        }
+    }
+}
+impl<S> DerefMut for Global<'_, S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Namespace(n) => &mut **n,
+            Self::Definition(d) => &mut **d,
+            Self::Overload(o) => &mut **o,
+        }
+    }
+}
+impl<'b, S> LinkedListElem<'b> for Global<'b, S> {
+    type Parent = Module<'b, S>;
+
+    fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
+        &self.link
+    }
+}
+
+/// Things common to all global items. Accessible through `Deref`s for `Global` and its variants. 
+#[derive(Derivative)]
+#[derivative(Debug(bound=""), Clone(bound=""), PartialEq(bound=""))]
+pub struct GlobalCommon<'b, S> {
+    pub name: Option<&'b str>,
+    pub link: LinkedListLink<'b, Global<'b, S>>,
+}
+
+#[derive(Derivative, Deref, DerefMut)]
+#[derivative(Debug(bound=""), Clone(bound=""), PartialEq(bound=""))]
+pub struct Namespace<'b, S> {
+    pub common: GlobalCommon<'b, S>,
+}
+
+#[derive(Derivative, PartialEq, Deref, DerefMut)]
+#[derivative(Debug)]
+pub struct Definition<'b, S> {
+    #[deref]
+    #[deref_mut]
+    pub common: GlobalCommon<'b, S>,
+    #[derivative(Debug(format_with = "ptr_opt"))]
+    pub captures: Option<&'b Definition<'b, S>>,
+    pub is_func: bool,
+    pub blocks: LinkedList<'b, Block<'b, S>>,
+}
+impl<'b, S> LinkedListParent<'b> for Definition<'b, S> {
+    type Elem = Block<'b, S>;
+
+    fn get_list(&'b self) -> &'b LinkedList<Block<'b, S>> {
+        &self.blocks
+    }
+}
+
+#[derive(Debug, Deref, DerefMut)]
+pub struct Overload<'b, S> {
+    #[deref]
+    #[deref_mut]
+    pub common: GlobalCommon<'b, S>,
+    pub variants: CVec<DefId<'b, S>>, 
+}
+impl<S> PartialEq for Overload<'_, S> {
+    fn eq(&self, other: &Self) -> bool {
+        self.common == other.common && self.variants.iter().eq(other.variants.iter())
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Block<'b, S> {
+    pub name: &'b str,
+    pub term: SyncCell<Terminator<'b, S>>,
+    pub insts: LinkedList<'b, Inst<'b, S>>,
+    pub link: LinkedListLink<'b, Self>,
+}
+impl<'b, S> LinkedListParent<'b> for Block<'b, S> {
+    type Elem = Inst<'b, S>;
+
+    fn get_list(&'b self) -> &'b LinkedList<'b, Inst<'b, S>> {
+        &self.insts
+    }
+}
+impl<'b, S> LinkedListElem<'b> for Block<'b, S> {
+    type Parent = Definition<'b, S>;
+
+    fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
+        &self.link
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Inst<'b, S> {
+    pub name: &'b str,
+    pub kind: InstKind<'b, S>,
+    pub span: S,
+    pub link: LinkedListLink<'b, Self>,
+}
+impl<'b, S> LinkedListElem<'b> for Inst<'b, S> {
+    type Parent = Block<'b, S>;
+
+    fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
+        &self.link
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Constant<'b> {
+    Unknown,
     Error,
     Null,
     Int(i64),
     Float(f64),
-    String(Cow<'src, [u8]>),
+    String(&'b [u8])
 }
 
-impl<'src, S> lang::IsReturn<'src, S, Hir> for Terminator<'src, S> {
-    #[inline]
-    fn is_return(&self) -> Option<Operand<'src, S>> {
-        if let Self::Return(op) = self {
-            Some(op.clone())
-        } else {
-            None
-        }
-    }
+#[derive(Derivative, Default)]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+pub enum Terminator<'b, S> {
+    #[default]
+    Unreachable,
+    Return(Operand<'b, S>),
+    CondBr {
+        cond: Operand<'b, S>,
+        if_true: BlockId<'b, S>,
+        if_false: BlockId<'b, S>,
+    },
+    UncondBr { blk: BlockId<'b, S> },
 }
 
-impl<'a, 'src, S> disp::DispWithContext<(&'a Module<'src, S>, &'a Global<'src, S>)>
-    for InstKind<'src, S>
-{
-    fn fmt(
-        &self,
-        context: (&'a Module<'src, S>, &'a Global<'src, S>),
-        f: &mut Formatter<'_>,
-    ) -> fmt::Result {
-        match self {
-            Self::Call { func, arg } => write!(
-                f,
-                "call {} {}",
-                disp::WithContext {
-                    value: func,
-                    context,
-                },
-                disp::WithContext {
-                    value: arg,
-                    context,
-                }
-            ),
-            Self::ArgOf { func } => write!(
-                f,
-                "argof {}",
-                disp::WithContext {
-                    value: func,
-                    context: context.0
-                }
-            ),
-            Self::FunctionTy { arg, ret } => write!(
-                f,
-                "fn {} -> {}",
-                disp::WithContext {
-                    value: arg,
-                    context
-                },
-                disp::WithContext {
-                    value: ret,
-                    context
-                }
-            ),
-            Self::Bind(op) => write!(
-                f,
-                "bind {}",
-                disp::WithContext {
-                    value: op,
-                    context
-                }
-            ),
-            Self::Phi(args) => {
-                f.write_str("phi")?;
-                args.iter()
-                    .try_fold(true, |first, (blk, val)| {
-                        if !first {
-                            f.write_str(",")?;
-                        }
-                        write!(
-                            f,
-                            " {} => {}",
-                            disp::WithContext {
-                                value: blk,
-                                context
-                            },
-                            disp::WithContext {
-                                value: val,
-                                context
-                            }
-                        ).map(|_| false)
-                    })
-                    .map(|_| ())
-            }
-        }
-    }
+#[derive(Derivative)]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+pub enum Operand<'b, S> {
+    Const(Constant<'b>),
+    Inst(InstId<'b, S>),
+    Global(GlobalId<'b, S>),
 }
 
-impl<'a, 'src, S> disp::DispWithContext<(&'a Module<'src, S>, &'a Global<'src, S>)>
-    for Terminator<'src, S>
-{
-    fn fmt(
-        &self,
-        context: (&'a Module<'src, S>, &'a Global<'src, S>),
-        f: &mut Formatter<'_>,
-    ) -> fmt::Result {
-        match self {
-            Self::Unreachable => f.write_str("unreachable"),
-            Self::Return(ret) => write!(f, "return {}", disp::WithContext { value: ret, context }),
-            Self::UncondBr(blk) => write!(f, "goto {}", disp::WithContext { value: blk, context }),
-            Self::CondBr { cond, if_true, if_false } => write!(f, "if {} then {} else {}",
-                disp::WithContext { value: cond, context },
-                disp::WithContext { value: if_true, context },
-                disp::WithContext { value: if_false, context },
-            ),
-        }
-    }
+/// A kind of instruction.
+#[derive(Derivative)]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+pub enum InstKind<'b, S> {
+    /// Call `func` with `arg`.
+    Call {
+        func: Operand<'b, S>,
+        arg: Operand<'b, S>
+    },
+    /// Transparent, but gives a new name and span.
+    Bind(Operand<'b, S>),
+    /// Cast a value to a given type.
+    Cast {
+        val: Operand<'b, S>,
+        ty: Operand<'b, S>,
+    },
+    /// Assert that a value has a given type.
+    Ascribe {
+        val: Operand<'b, S>,
+        ty: Operand<'b, S>,
+    },
+    /// Get value based on the predecessor.
+    Phi(&'b [(BlockId<'b, S>, Operand<'b, S>)]>),
 }
-
-impl<'src, T: Copy> disp::DispWithContext<T> for Constant<'src> {
-    fn fmt(&self, _context: T, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Error => f.write_str("error"),
-            Self::Null => f.write_str("null"),
-            Self::Int(v) => write!(f, "int {v}"),
-            Self::Float(v) => write!(f, "float {v}"),
-            Self::String(v) => write!(f, "str {:?}", bstr::BStr::new(v)),
-        }
-    }
-}
-
-pub struct Hir;
-impl<'src, S> lang::Language<'src, S> for Hir {
-    type Constant = Constant<'src>;
-    type InstKind = InstKind<'src, S>;
-    type Terminator = Terminator<'src, S>;
-}
-
-pub type GlobalId<'src, S> = lang::GlobalId<'src, S, Hir>;
-pub type BlockId<'src, S> = lang::BlockId<'src, S, Hir>;
-pub type InstId<'src, S> = lang::InstId<'src, S, Hir>;
-pub type ModuleId<'src, S> = lang::ModuleId<'src, S, Hir>;
-pub type UniversalGlobalId<'src, S, F> = lang::UniversalGlobalId<'src, S, F, Hir>;
-
-pub type Module<'src, S> = lang::Module<'src, S, Hir>;
-pub type Global<'src, S> = lang::Global<'src, S, Hir>;
-pub type Block<'src, S> = lang::Block<'src, S, Hir>;
-pub type Instruction<'src, S> = lang::Instruction<'src, S, Hir>;
-pub type Operand<'src, S> = lang::Operand<'src, S, Hir>;

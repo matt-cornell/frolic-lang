@@ -5,8 +5,11 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+atomic_ref = "0.2.1"
 bstr.workspace = true
+bump-scope = "0.4.0"
 derivative = "2.2.0"
+derive_more = { version = "0.99.17", default-features = false, features = ["deref", "deref_mut", "from", "into", "is_variant", "unwrap", "as_ref", "as_mut", "nightly"] }
 either = "1.11.0"
 frolic-ast.workspace = true
 frolic-utils.workspace = true
