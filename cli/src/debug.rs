@@ -158,7 +158,7 @@ impl Runnable for FrolicDebugHir {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
-        /*let errs = Mutex::new(DiagnosticPrint::new(
+        let errs = Mutex::new(DiagnosticPrint::new(
             stderr,
             miette::GraphicalReportHandler::new(),
         ));
@@ -188,15 +188,18 @@ impl Runnable for FrolicDebugHir {
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
+        let bump = BumpAlloc::new();
         let ast = parse_tl(&toks, file, &errs, HirAsts::new());
+        let module = lower_to_ret_module(&ast, &bump, &errs, file, "debug_hir".to_string());
+        std::mem::drop(ast);
 
-        let module = HirModule::new(file.to_string());
-        lower_to_hir(&ast, &errs, &module, None);
-
-        writeln!(stdout, "#= source input:\n{}\n=#", bstr::BStr::new(file.contents()))?;
-        write!(stdout, "{module}")?;
-
-        errs.into_inner().unwrap().into_result()?;*/
+        writeln!(
+            stdout,
+            "#= source input:\n{}\n=#",
+            bstr::BStr::new(file.contents())
+        )?;
+        // write!(stdout, "{module}")?;
+        errs.into_inner().unwrap().into_result()?;
 
         Ok(())
     }

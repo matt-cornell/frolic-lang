@@ -1,27 +1,27 @@
 use super::*;
 use smallvec::smallvec;
 
-impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     fn parse_dottedname(
         &mut self,
-        out: &mut Vec<A::AstBox<'src>>,
+        out: &mut Vec<A::AstBox>,
     ) -> (Option<DottedName<'src, S>>, bool) {
         if self.eat_comment(out) {
             return (None, true);
@@ -77,8 +77,8 @@ where
 
     pub fn parse_let_decl(
         &mut self,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<asts::LetAST<'src, A::AstBox<'src>>>, bool) {
+        out: &mut Vec<A::AstBox>,
+    ) -> (Option<asts::LetAST<'src, A::AstBox>>, bool) {
         let kw = self.input[self.index].span;
         self.index += 1;
         let name = {

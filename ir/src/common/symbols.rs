@@ -1,7 +1,7 @@
-use std::hash::{Hash, BuildHasher, RandomState};
-use std::collections::HashMap;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Borrow;
+use std::collections::HashMap;
+use std::hash::{BuildHasher, Hash, RandomState};
 
 /// Wrapper around a `Vec` of `HashMap`s, but makes lookup more convenient and asserts that the
 /// scope list isn't empty.
@@ -51,15 +51,24 @@ impl<K, V, S: Default> Scopes<K, V, S> {
         }
     }
     /// Push a new scope to the scope list.
-    pub fn push_new_scope(&mut self) where S: Default {
+    pub fn push_new_scope(&mut self)
+    where
+        S: Default,
+    {
         self.scopes.push(HashMap::default());
     }
 }
 impl<K: Hash + Eq, V, S: BuildHasher> Scopes<K, V, S> {
-    pub fn lookup<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> Option<&V> where K: Borrow<Q> {
+    pub fn lookup<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> Option<&V>
+    where
+        K: Borrow<Q>,
+    {
         self.scopes.iter().rev().find_map(|s| s.get(key))
     }
-    pub fn lookup_mut<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<&mut V> where K: Borrow<Q> {
+    pub fn lookup_mut<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: Borrow<Q>,
+    {
         self.scopes.iter_mut().rev().find_map(|s| s.get_mut(key))
     }
     pub fn insert(&mut self, key: K, value: V) -> Option<V> {

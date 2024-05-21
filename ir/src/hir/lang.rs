@@ -1,11 +1,11 @@
-use crate::common::list::{LinkedList, LinkedListLink, LinkedListParent, LinkedListElem};
+use crate::common::list::{LinkedList, LinkedListElem, LinkedListLink, LinkedListParent};
+use bump_scope::NoDrop;
 use derivative::Derivative;
 use derive_more::*;
 use frolic_utils::synccell::SyncCell;
-use std::ops::{Deref, DerefMut};
 use orx_concurrent_vec::ConcurrentVec as CVec;
-use bump_scope::NoDrop;
 use std::fmt::{self, Debug, Formatter};
+use std::ops::{Deref, DerefMut};
 
 fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
     if let Some(ptr) = val {
@@ -18,10 +18,21 @@ fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
 /// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
 #[repr(transparent)]
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound = ""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+#[derivative(
+    Debug(bound = ""),
+    Clone(bound = ""),
+    Copy(bound = ""),
+    PartialEq(bound = ""),
+    Eq(bound = ""),
+    Hash(bound = "")
+)]
 pub struct Id<'b, T: 'b>(
-    #[derivative(Debug(format_with = "std::fmt::Pointer::fmt"), PartialEq(compare_with="std::ptr::eq"), Hash(hash_with="std::ptr::hash"))]
-    pub &'b T
+    #[derivative(
+        Debug(format_with = "std::fmt::Pointer::fmt"),
+        PartialEq(compare_with = "std::ptr::eq"),
+        Hash(hash_with = "std::ptr::hash")
+    )]
+    pub &'b T,
 );
 pub type ModuleId<'b, S> = Id<'b, Module<'b, S>>;
 pub type GlobalId<'b, S> = Id<'b, Global<'b, S>>;
@@ -33,6 +44,14 @@ pub type InstId<'b, S> = Id<'b, Inst<'b, S>>;
 pub struct Module<'b, S> {
     pub name: &'b str,
     pub globals: LinkedList<'b, Global<'b, S>>,
+}
+impl<'b, S> Module<'b, S> {
+    pub fn new(name: &'b str) -> Self {
+        Self {
+            name,
+            globals: LinkedList::default(),
+        }
+    }
 }
 impl<'b, S> NoDrop for Module<'b, S> {}
 impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
@@ -79,9 +98,9 @@ impl<'b, S> LinkedListElem<'b> for Global<'b, S> {
     }
 }
 
-/// Things common to all global items. Accessible through `Deref`s for `Global` and its variants. 
+/// Things common to all global items. Accessible through `Deref`s for `Global` and its variants.
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound=""), PartialEq(bound=""))]
+#[derivative(Debug(bound = ""), Clone(bound = ""), PartialEq(bound = ""))]
 pub struct GlobalCommon<'b, S> {
     pub name: Option<&'b str>,
     pub link: LinkedListLink<'b, Global<'b, S>>,
@@ -89,7 +108,7 @@ pub struct GlobalCommon<'b, S> {
 impl<'b, S> NoDrop for GlobalCommon<'b, S> {}
 
 #[derive(Derivative, Deref, DerefMut)]
-#[derivative(Debug(bound=""), Clone(bound=""), PartialEq(bound=""))]
+#[derivative(Debug(bound = ""), Clone(bound = ""), PartialEq(bound = ""))]
 pub struct Namespace<'b, S> {
     pub common: GlobalCommon<'b, S>,
 }
@@ -120,7 +139,7 @@ pub struct Overload<'b, S> {
     #[deref]
     #[deref_mut]
     pub common: GlobalCommon<'b, S>,
-    pub variants: CVec<DefId<'b, S>>, 
+    pub variants: CVec<DefId<'b, S>>,
 }
 impl<'b, S> NoDrop for Overload<'b, S> {}
 impl<S> PartialEq for Overload<'_, S> {
@@ -175,11 +194,16 @@ pub enum Constant<'b> {
     Null,
     Int(i64),
     Float(f64),
-    String(&'b [u8])
+    String(&'b [u8]),
 }
 
 #[derive(Derivative, Default)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
+#[derivative(
+    Debug(bound = ""),
+    Clone(bound = ""),
+    Copy(bound = ""),
+    PartialEq(bound = "")
+)]
 pub enum Terminator<'b, S> {
     #[default]
     Unreachable,
@@ -189,11 +213,18 @@ pub enum Terminator<'b, S> {
         if_true: BlockId<'b, S>,
         if_false: BlockId<'b, S>,
     },
-    UncondBr { blk: BlockId<'b, S> },
+    UncondBr {
+        blk: BlockId<'b, S>,
+    },
 }
 
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
+#[derivative(
+    Debug(bound = ""),
+    Clone(bound = ""),
+    Copy(bound = ""),
+    PartialEq(bound = "")
+)]
 pub enum Operand<'b, S> {
     Const(Constant<'b>),
     Inst(InstId<'b, S>),
@@ -202,12 +233,17 @@ pub enum Operand<'b, S> {
 
 /// A kind of instruction.
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
+#[derivative(
+    Debug(bound = ""),
+    Clone(bound = ""),
+    Copy(bound = ""),
+    PartialEq(bound = "")
+)]
 pub enum InstKind<'b, S> {
     /// Call `func` with `arg`.
     Call {
         func: Operand<'b, S>,
-        arg: Operand<'b, S>
+        arg: Operand<'b, S>,
     },
     /// Transparent, but gives a new name and span.
     Bind(Operand<'b, S>),

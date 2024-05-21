@@ -29,9 +29,9 @@ impl<'b, T: LinkedListElem<'b>> Iterator for ListIter<'b, T> {
     }
 }
 
-/// A linked list for elements that know their parent, meant to be the field 
+/// A linked list for elements that know their parent, meant to be the field
 #[derive(Derivative)]
-#[derivative(Default(bound=""))]
+#[derivative(Default(bound = ""))]
 pub struct LinkedList<'b, T> {
     first: AtomicRef<'b, T>,
     last: AtomicRef<'b, T>,
@@ -56,13 +56,13 @@ impl<'b, T: LinkedListElem<'b> + PartialEq> PartialEq for LinkedList<'b, T> {
 }
 
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Default(bound=""))]
+#[derivative(Debug(bound = ""), Default(bound = ""))]
 pub struct LinkedListLink<'b, S: LinkedListElem<'b>> {
-    #[derivative(Debug(format_with="fmt_ref"))]
+    #[derivative(Debug(format_with = "fmt_ref"))]
     parent: AtomicRef<'b, S::Parent>,
-    #[derivative(Debug(format_with="fmt_ref"))]
+    #[derivative(Debug(format_with = "fmt_ref"))]
     next: AtomicRef<'b, S>,
-    #[derivative(Debug(format_with="fmt_ref"))]
+    #[derivative(Debug(format_with = "fmt_ref"))]
     prev: AtomicRef<'b, S>,
 }
 impl<'b, S: LinkedListElem<'b>> LinkedListLink<'b, S> {
@@ -74,7 +74,9 @@ impl<'b, S: LinkedListElem<'b>> LinkedListLink<'b, S> {
     };
 }
 impl<'b, S: LinkedListElem<'b>> PartialEq for LinkedListLink<'b, S> {
-    fn eq(&self, _other: &Self) -> bool { true }
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
 }
 impl<'b, S: LinkedListElem<'b>> Eq for LinkedListLink<'b, S> {}
 impl<'b, S: LinkedListElem<'b>> Hash for LinkedListLink<'b, S> {
@@ -83,7 +85,10 @@ impl<'b, S: LinkedListElem<'b>> Hash for LinkedListLink<'b, S> {
 impl<'b, S: LinkedListElem<'b>> LinkedListLink<'b, S> {
     /// Remove references to this, leaving outgoing refs.
     pub(self) fn unlink_partial(&self) {
-        let (prev, next) = (self.prev.load(Ordering::Acquire), self.next.load(Ordering::Acquire));
+        let (prev, next) = (
+            self.prev.load(Ordering::Acquire),
+            self.next.load(Ordering::Acquire),
+        );
         let parent = self.parent.load(Ordering::Acquire);
         if let Some(prev) = prev {
             prev.get_link().next.store(next, Ordering::Release);
@@ -127,7 +132,9 @@ pub trait LinkedListParent<'a>: Sized {
     }
     fn push_front(&'a self, elem: &'a Self::Elem) {
         let list = self.get_list();
-        let _ = list.last.compare_exchange(None, Some(elem), Ordering::AcqRel, Ordering::Acquire);
+        let _ = list
+            .last
+            .compare_exchange(None, Some(elem), Ordering::AcqRel, Ordering::Acquire);
         let old_first = list.first.swap(Some(elem), Ordering::AcqRel);
         if let Some(of) = old_first {
             of.get_link().prev.store(Some(elem), Ordering::Release);
@@ -140,7 +147,9 @@ pub trait LinkedListParent<'a>: Sized {
     }
     fn push_back(&'a self, elem: &'a Self::Elem) {
         let list = self.get_list();
-        let _ = list.first.compare_exchange(None, Some(elem), Ordering::AcqRel, Ordering::Acquire);
+        let _ = list
+            .first
+            .compare_exchange(None, Some(elem), Ordering::AcqRel, Ordering::Acquire);
         let old_last = list.last.swap(Some(elem), Ordering::AcqRel);
         if let Some(ol) = old_last {
             ol.get_link().next.store(Some(elem), Ordering::Release);
@@ -154,7 +163,9 @@ pub trait LinkedListParent<'a>: Sized {
     fn pop_front(&'a self) -> Option<&'a Self::Elem> {
         let list = self.get_list();
         let old_first = list.first.load(Ordering::Acquire)?;
-        let _ = list.last.compare_exchange(Some(old_first), None, Ordering::AcqRel, Ordering::Acquire);
+        let _ =
+            list.last
+                .compare_exchange(Some(old_first), None, Ordering::AcqRel, Ordering::Acquire);
         let link = old_first.get_link();
         let new_first = link.next.swap(None, Ordering::AcqRel);
         link.parent.store(None, Ordering::Relaxed);
@@ -167,7 +178,9 @@ pub trait LinkedListParent<'a>: Sized {
     fn pop_back(&'a self) -> Option<&'a Self::Elem> {
         let list = self.get_list();
         let old_last = list.last.load(Ordering::Acquire)?;
-        let _ = list.first.compare_exchange(Some(old_last), None, Ordering::AcqRel, Ordering::Acquire);
+        let _ =
+            list.first
+                .compare_exchange(Some(old_last), None, Ordering::AcqRel, Ordering::Acquire);
         let link = old_last.get_link();
         let new_last = link.prev.swap(None, Ordering::AcqRel);
         link.parent.store(None, Ordering::Relaxed);
