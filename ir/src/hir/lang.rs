@@ -4,8 +4,10 @@ use derive_more::*;
 use frolic_utils::synccell::SyncCell;
 use std::ops::{Deref, DerefMut};
 use orx_concurrent_vec::ConcurrentVec as CVec;
+use bump_scope::NoDrop;
+use std::fmt::{self, Debug, Formatter};
 
-fn ptr_opt<T>(val: &Option<&T>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
     if let Some(ptr) = val {
         write!(f, "{ptr:p}")
     } else {
@@ -27,10 +29,12 @@ pub type DefId<'b, S> = Id<'b, Definition<'b, S>>;
 pub type BlockId<'b, S> = Id<'b, Block<'b, S>>;
 pub type InstId<'b, S> = Id<'b, Inst<'b, S>>;
 
+#[derive(Debug)]
 pub struct Module<'b, S> {
     pub name: &'b str,
     pub globals: LinkedList<'b, Global<'b, S>>,
 }
+impl<'b, S> NoDrop for Module<'b, S> {}
 impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
     type Elem = Global<'b, S>;
 
@@ -46,6 +50,7 @@ pub enum Global<'b, S> {
     Definition(Definition<'b, S>),
     Overload(Overload<'b, S>),
 }
+impl<'b, S> NoDrop for Global<'b, S> {}
 impl<'b, S> Deref for Global<'b, S> {
     type Target = GlobalCommon<'b, S>;
 
@@ -81,12 +86,14 @@ pub struct GlobalCommon<'b, S> {
     pub name: Option<&'b str>,
     pub link: LinkedListLink<'b, Global<'b, S>>,
 }
+impl<'b, S> NoDrop for GlobalCommon<'b, S> {}
 
 #[derive(Derivative, Deref, DerefMut)]
 #[derivative(Debug(bound=""), Clone(bound=""), PartialEq(bound=""))]
 pub struct Namespace<'b, S> {
     pub common: GlobalCommon<'b, S>,
 }
+impl<'b, S> NoDrop for Namespace<'b, S> {}
 
 #[derive(Derivative, PartialEq, Deref, DerefMut)]
 #[derivative(Debug)]
@@ -99,6 +106,7 @@ pub struct Definition<'b, S> {
     pub is_func: bool,
     pub blocks: LinkedList<'b, Block<'b, S>>,
 }
+impl<'b, S> NoDrop for Definition<'b, S> {}
 impl<'b, S> LinkedListParent<'b> for Definition<'b, S> {
     type Elem = Block<'b, S>;
 
@@ -114,6 +122,7 @@ pub struct Overload<'b, S> {
     pub common: GlobalCommon<'b, S>,
     pub variants: CVec<DefId<'b, S>>, 
 }
+impl<'b, S> NoDrop for Overload<'b, S> {}
 impl<S> PartialEq for Overload<'_, S> {
     fn eq(&self, other: &Self) -> bool {
         self.common == other.common && self.variants.iter().eq(other.variants.iter())
@@ -127,6 +136,7 @@ pub struct Block<'b, S> {
     pub insts: LinkedList<'b, Inst<'b, S>>,
     pub link: LinkedListLink<'b, Self>,
 }
+impl<'b, S> NoDrop for Block<'b, S> {}
 impl<'b, S> LinkedListParent<'b> for Block<'b, S> {
     type Elem = Inst<'b, S>;
 
@@ -142,13 +152,14 @@ impl<'b, S> LinkedListElem<'b> for Block<'b, S> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Inst<'b, S> {
     pub name: &'b str,
     pub kind: InstKind<'b, S>,
     pub span: S,
     pub link: LinkedListLink<'b, Self>,
 }
+impl<'b, S: NoDrop> NoDrop for Inst<'b, S> {}
 impl<'b, S> LinkedListElem<'b> for Inst<'b, S> {
     type Parent = Block<'b, S>;
 
@@ -157,7 +168,7 @@ impl<'b, S> LinkedListElem<'b> for Inst<'b, S> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constant<'b> {
     Unknown,
     Error,
@@ -168,7 +179,7 @@ pub enum Constant<'b> {
 }
 
 #[derive(Derivative, Default)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
 pub enum Terminator<'b, S> {
     #[default]
     Unreachable,
@@ -182,7 +193,7 @@ pub enum Terminator<'b, S> {
 }
 
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
 pub enum Operand<'b, S> {
     Const(Constant<'b>),
     Inst(InstId<'b, S>),
@@ -191,7 +202,7 @@ pub enum Operand<'b, S> {
 
 /// A kind of instruction.
 #[derive(Derivative)]
-#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""), Eq(bound=""), Hash(bound=""))]
+#[derivative(Debug(bound=""), Clone(bound=""), Copy(bound=""), PartialEq(bound=""))]
 pub enum InstKind<'b, S> {
     /// Call `func` with `arg`.
     Call {
@@ -211,5 +222,5 @@ pub enum InstKind<'b, S> {
         ty: Operand<'b, S>,
     },
     /// Get value based on the predecessor.
-    Phi(&'b [(BlockId<'b, S>, Operand<'b, S>)]>),
+    Phi(&'b [(BlockId<'b, S>, Operand<'b, S>)]),
 }

@@ -11,3 +11,4 @@ fn fmt_ref<T>(r: &AtomicRef<T>, f: &mut Formatter) -> fmt::Result {
 }
 
 pub mod list;
+pub mod symbols;
