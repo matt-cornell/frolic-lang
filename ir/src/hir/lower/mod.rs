@@ -209,7 +209,7 @@ pub mod single_threaded {
         E: ErrorReporter<SourcedError<F, HirError<A::Span>>> + Copy + Send + Sync,
     >(
         ast: &asts::FrolicAST<A, F>,
-        alloc: &'b BumpPool,
+        alloc: impl Into<&'b BumpScope<'b>>,
         errs: E,
         mod_name: impl std::fmt::Display,
         starting_scope: String,
@@ -217,10 +217,10 @@ pub mod single_threaded {
     where
         A::Span: Sync + Span,
     {
-        let alloc_ = alloc.get();
-        let mod_name = alloc_.alloc_fmt(format_args!("{mod_name}")).into_ref();
-        let module = alloc_.alloc(Module::new(mod_name)).into_ref();
-        lower_to_hir(ast, alloc, module, errs, starting_scope);
+        let alloc = alloc.into();
+        let mod_name = alloc.alloc_fmt(format_args!("{mod_name}")).into_ref();
+        let module = alloc.alloc(Module::new(mod_name)).into_ref();
+        let _ = lower_to_hir(ast, alloc, module, errs, starting_scope);
         module
     }
 
@@ -252,7 +252,7 @@ pub mod multi_threaded {
         module: &'b Module<'b, A::Span>,
         errs: E,
         starting_scope: String,
-    ) where
+    ) -> LowerResult where
         A::Span: Sync,
     {
         let file = ast.file.clone();
@@ -275,11 +275,11 @@ pub mod multi_threaded {
             globals: Scopes::new(),
         };
         let unsync = glb.make_unsync();
-        let _ = ast.nodes.iter().try_for_each(|a| a.predef_global(&unsync));
-        let _ = ast
+        ast.nodes.iter().try_for_each(|a| a.predef_global(&unsync))?;
+        ast
             .nodes
             .par_iter()
-            .try_for_each_init(|| loc.clone(), |loc, a| a.global_sync(&glb, loc));
+            .try_for_each_init(|| loc.clone(), |loc, a| a.global_sync(&glb, loc))
     }
 
     /// Lower to a new module, returning it.
@@ -301,7 +301,7 @@ pub mod multi_threaded {
         let alloc_ = alloc.get();
         let mod_name = alloc_.alloc_fmt(format_args!("{mod_name}")).into_ref();
         let module = alloc_.alloc(Module::new(mod_name)).into_ref();
-        lower_to_hir(ast, alloc, module, errs, starting_scope);
+        let _ = lower_to_hir(ast, alloc, module, errs, starting_scope);
         module
     }
 

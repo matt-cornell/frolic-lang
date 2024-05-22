@@ -3,9 +3,9 @@ use bump_scope::NoDrop;
 use derivative::Derivative;
 use derive_more::*;
 use frolic_utils::synccell::SyncCell;
-use orx_concurrent_vec::ConcurrentVec as CVec;
 use std::fmt::{self, Debug, Formatter};
-use std::ops::{Deref, DerefMut};
+
+mod disp;
 
 fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
     if let Some(ptr) = val {
@@ -17,7 +17,7 @@ fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
 
 /// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
 #[repr(transparent)]
-#[derive(Derivative)]
+#[derive(Derivative, From)]
 #[derivative(
     Debug(bound = ""),
     Clone(bound = ""),
@@ -26,7 +26,7 @@ fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
     Eq(bound = ""),
     Hash(bound = "")
 )]
-pub struct Id<'b, T: 'b>(
+pub struct Id<'b, T>(
     #[derivative(
         Debug(format_with = "std::fmt::Pointer::fmt"),
         PartialEq(compare_with = "std::ptr::eq"),
@@ -36,7 +36,6 @@ pub struct Id<'b, T: 'b>(
 );
 pub type ModuleId<'b, S> = Id<'b, Module<'b, S>>;
 pub type GlobalId<'b, S> = Id<'b, Global<'b, S>>;
-pub type DefId<'b, S> = Id<'b, Definition<'b, S>>;
 pub type BlockId<'b, S> = Id<'b, Block<'b, S>>;
 pub type InstId<'b, S> = Id<'b, Inst<'b, S>>;
 
@@ -62,89 +61,45 @@ impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
     }
 }
 
-/// Something defined at global scope.
-#[derive(Debug)]
-pub enum Global<'b, S> {
-    Namespace(Namespace<'b, S>),
-    Definition(Definition<'b, S>),
-    Overload(Overload<'b, S>),
-}
-impl<'b, S> NoDrop for Global<'b, S> {}
-impl<'b, S> Deref for Global<'b, S> {
-    type Target = GlobalCommon<'b, S>;
-
-    fn deref(&self) -> &Self::Target {
-        match self {
-            Self::Namespace(n) => &n,
-            Self::Definition(d) => &d,
-            Self::Overload(o) => &o,
-        }
-    }
-}
-impl<S> DerefMut for Global<'_, S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self {
-            Self::Namespace(n) => &mut **n,
-            Self::Definition(d) => &mut **d,
-            Self::Overload(o) => &mut **o,
-        }
-    }
-}
-impl<'b, S> LinkedListElem<'b> for Global<'b, S> {
-    type Parent = Module<'b, S>;
-
-    fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
-        &self.link
-    }
-}
-
-/// Things common to all global items. Accessible through `Deref`s for `Global` and its variants.
-#[derive(Derivative)]
-#[derivative(Debug(bound = ""), Clone(bound = ""), PartialEq(bound = ""))]
-pub struct GlobalCommon<'b, S> {
-    pub name: Option<&'b str>,
-    pub link: LinkedListLink<'b, Global<'b, S>>,
-}
-impl<'b, S> NoDrop for GlobalCommon<'b, S> {}
-
-#[derive(Derivative, Deref, DerefMut)]
-#[derivative(Debug(bound = ""), Clone(bound = ""), PartialEq(bound = ""))]
-pub struct Namespace<'b, S> {
-    pub common: GlobalCommon<'b, S>,
-}
-impl<'b, S> NoDrop for Namespace<'b, S> {}
-
-#[derive(Derivative, PartialEq, Deref, DerefMut)]
+#[derive(Derivative, PartialEq)]
 #[derivative(Debug)]
-pub struct Definition<'b, S> {
-    #[deref]
-    #[deref_mut]
-    pub common: GlobalCommon<'b, S>,
+pub struct Global<'b, S> {
+    pub name: &'b str,
+    pub link: LinkedListLink<'b, Self>,
     #[derivative(Debug(format_with = "ptr_opt"))]
-    pub captures: Option<&'b Definition<'b, S>>,
+    pub captures: Option<&'b Global<'b, S>>,
     pub is_func: bool,
     pub blocks: LinkedList<'b, Block<'b, S>>,
 }
-impl<'b, S> NoDrop for Definition<'b, S> {}
-impl<'b, S> LinkedListParent<'b> for Definition<'b, S> {
+impl<'b, S> Global<'b, S> {
+    /// For the case of a global that only returns a value, use this shortcut.
+    pub fn as_alias(&self) -> Option<Operand<'b, S>> {
+        let mut it = self.blocks.iter();
+        let Some(Block { insts, term, ..}) = it.next() else {
+            return None
+        };
+        it.next().is_none().then_some(())?;
+        insts.iter().next().is_none().then_some(())?;
+        if let Terminator::Return(op) = term.get() {
+            Some(op)
+        } else {
+            None
+        }
+    }
+}
+impl<'b, S> NoDrop for Global<'b, S> {}
+impl<'b, S> LinkedListParent<'b> for Global<'b, S> {
     type Elem = Block<'b, S>;
 
     fn get_list(&'b self) -> &'b LinkedList<Block<'b, S>> {
         &self.blocks
     }
 }
-
-#[derive(Debug, Deref, DerefMut)]
-pub struct Overload<'b, S> {
-    #[deref]
-    #[deref_mut]
-    pub common: GlobalCommon<'b, S>,
-    pub variants: CVec<DefId<'b, S>>,
-}
-impl<'b, S> NoDrop for Overload<'b, S> {}
-impl<S> PartialEq for Overload<'_, S> {
-    fn eq(&self, other: &Self) -> bool {
-        self.common == other.common && self.variants.iter().eq(other.variants.iter())
+impl<'b, S> LinkedListElem<'b> for Global<'b, S> {
+    type Parent = Module<'b, S>;
+    
+    fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
+        &self.link
     }
 }
 
@@ -164,7 +119,7 @@ impl<'b, S> LinkedListParent<'b> for Block<'b, S> {
     }
 }
 impl<'b, S> LinkedListElem<'b> for Block<'b, S> {
-    type Parent = Definition<'b, S>;
+    type Parent = Global<'b, S>;
 
     fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
         &self.link
@@ -195,6 +150,7 @@ pub enum Constant<'b> {
     Int(i64),
     Float(f64),
     String(&'b [u8]),
+    Namespace(&'b str),
 }
 
 #[derive(Derivative, Default)]

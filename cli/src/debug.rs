@@ -198,7 +198,8 @@ impl Runnable for FrolicDebugHir {
             "#= source input:\n{}\n=#",
             bstr::BStr::new(file.contents())
         )?;
-        // write!(stdout, "{module}")?;
+        write!(stdout, "{module}")?;
+
         errs.into_inner().unwrap().into_result()?;
 
         Ok(())

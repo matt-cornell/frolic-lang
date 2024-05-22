@@ -14,6 +14,7 @@ either = "1.11.0"
 frolic-ast.workspace = true
 frolic-utils.workspace = true
 impl-tools.workspace = true
+indenter = "0.3.3"
 miette.workspace = true
 orx-concurrent-vec = "1.7.0"
 parking_lot = { version = "0.12.2", features = ["nightly"] }
