@@ -1,59 +1,75 @@
 use super::*;
 
-impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LambdaAST<'src, A> {
-    fn local<'l, 'g: 'l>(
+impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LambdaAST<'src, A> {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        let bloc = self.body.loc();
-        loc.scope_name.push(format!("[\\{}-{}]", bloc.offset(), bloc.offset() + bloc.end()).into());
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        use std::fmt::Write;
+        let sloc = self.loc();
+        let old = loc.scope_name.len();
+        let _ = write!(loc.scope_name, ".[{}-{}]", sloc.offset(), sloc.end());
         loc.locals.push_new_scope();
-        let gid = glb.module.push_global(Global::new(loc.glb_segs_base("")));
-        let erred = loc.with_new_loc(gid, Block::new("entry"), glb.module, |loc| {
-            let inst = Instruction {
-                name: self.arg.clone(),
+        let gid = Id(glb
+            .alloc
+            .alloc(Global {
+                name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+                captures: loc.insert.0.parent(Ordering::Relaxed),
+                is_func: true,
+                span: sloc,
+                blocks: LinkedList::NEW,
+                link: LinkedListLink::NEW,
+            })
+            .into_ref());
+        glb.module.push_back(gid.0);
+        let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+        gid.0.push_back(blk);
+        let old_ins = std::mem::replace(&mut loc.insert, Id(blk));
+
+        let name = glb.intern_cow(&self.arg);
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name,
                 span: self.aloc,
                 kind: InstKind::ArgOf { func: gid },
-            };
-            let i = glb.module.intern_inst(inst);
-            loc.push_inst(i);
-            loc.locals.insert(self.arg.clone(), i);
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
 
-            let (ret, erred) = self.body.local(glb, loc);
-            loc.block_term().set(Terminator::Return(ret));
-            erred
-        });
-        loc.scope_name.pop();
+        blk.push_back(inst);
+        loc.locals.insert(name, Id(inst));
+
+        let (ret, erred) = self.body.local(glb, loc);
+        blk.term.set(Terminator::Return(ret));
+
+        loc.insert = old_ins;
         loc.locals.pop_scope();
+        loc.scope_name.truncate(old);
         (Operand::Global(gid), erred)
     }
 }
-
-impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::CallAST<A> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::CallAST<A> {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        let (func, false) = self.func.local(glb, loc) else {
-            return (const_err(), true);
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        let (func, Ok(())) = self.func.local(glb, loc) else {
+            return (const_err(), Err(EarlyReturn));
         };
-
-        let (arg, false) = self.arg.local(glb, loc) else {
-            return (const_err(), true);
-        };
-
-        let inst = Instruction {
-            name: "".into(),
-            span: self.loc(),
-            kind: InstKind::Call { func, arg },
-        };
-
-        let id = glb.module.intern_inst(inst);
-
-        loc.push_inst(id);
-
-        (Operand::Instruction(id), false)
+        let (arg, erred) = self.arg.local(glb, loc);
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.loc(),
+                kind: InstKind::Call { func, arg },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
+        loc.insert.0.push_back(inst);
+        (Operand::Inst(Id(inst)), erred)
     }
 }

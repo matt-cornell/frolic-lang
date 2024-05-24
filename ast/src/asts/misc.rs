@@ -1,20 +1,13 @@
 use super::*;
-use std::fmt::{self, Debug, Formatter};
 
 /// A comment AST. This is kept around so that comments are kept in formatted code and to make it
 /// easier to debug the IR.
-#[derive(Clone, PartialEq)]
+#[derive(Derivative, PartialEq)]
+#[derivative(Debug, Clone)]
 pub struct CommentAST<'src, S> {
+    #[derivative(Debug(format_with = "bstr_debug"))]
     pub comm: Cow<'src, [u8]>,
     pub loc: S,
-}
-impl<S: Debug> Debug for CommentAST<'_, S> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CommentAST")
-            .field("comm", &bstr::BStr::new(&self.comm))
-            .field("loc", &self.loc)
-            .finish()
-    }
 }
 impl<S: Span> Located for CommentAST<'_, S> {
     type Span = S;

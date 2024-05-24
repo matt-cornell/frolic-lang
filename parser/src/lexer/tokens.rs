@@ -1,7 +1,11 @@
 use super::*;
 use std::fmt::{self, Debug, Formatter};
 use strum::*;
+use derivative::Derivative;
 
+fn bstr_debug<S: AsRef<[u8]>>(bytes: &S, f: &mut Formatter<'_>) -> fmt::Result {
+    Debug::fmt(bstr::BStr::new(bytes), f)
+}
 /// A kind of delimiter.
 #[derive(Debug, Clone, Copy, PartialEq, Display)]
 #[strum(serialize_all = "UPPERCASE")]
@@ -98,11 +102,12 @@ impl AmbigOp {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Derivative)]
+#[derivative(Debug, Clone, PartialEq)]
 pub enum TokenKind<'src> {
     /// A comment. Will be `Borrowed` if it's a single comment, or `Owned` if the combination of
     /// multiple.
-    Comment(Cow<'src, [u8]>, CommentKind),
+    Comment(#[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>, CommentKind),
     /// An identifier-- an XID start character followed by 0 or more XID continues
     Ident(&'src str),
     Keyword(Keyword),
@@ -115,49 +120,11 @@ pub enum TokenKind<'src> {
     Char(u32),
     /// A string literal. Will be borrowed if possible, but must be `Owned` if there are escape
     /// sequences.
-    String(Cow<'src, [u8]>),
+    String(#[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>),
     Special(SpecialChar),
     PreOp(&'src str),
     InfOp(&'src str),
     AmbigOp(AmbigOp),
-}
-/// Manually implemented so we can use `bstr` for comments and strings.
-impl Debug for TokenKind<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Comment(comm, kind) => f
-                .debug_tuple("Comment")
-                .field(&bstr::BStr::new(comm))
-                .field(kind)
-                .finish(),
-            Self::Ident(id) => f.debug_tuple("Ident").field(id).finish(),
-            Self::Keyword(kw) => f.debug_tuple("Keyword").field(kw).finish(),
-            Self::Open(delim) => f.debug_tuple("Open").field(delim).finish(),
-            Self::Close(delim) => f.debug_tuple("Close").field(delim).finish(),
-            Self::Int(val) => f.debug_tuple("Int").field(val).finish(),
-            Self::Float(val) => f.debug_tuple("Float").field(val).finish(),
-            Self::Char(val) => {
-                let mut tup = f.debug_tuple("Char");
-                if let Ok(ch) = char::try_from(*val) {
-                    tup.field(&ch);
-                } else {
-                    tup.field(val);
-                }
-                tup.finish()
-            }
-            Self::String(val) => f
-                .debug_tuple("String")
-                .field(&bstr::BStr::new(val))
-                .finish(),
-            Self::Special(sc) => f.debug_tuple("Special").field(sc).finish(),
-            Self::PreOp(op) => f.debug_tuple("PreOp").field(op).finish(),
-            Self::InfOp(op) => f.debug_tuple("InfOp").field(op).finish(),
-            Self::AmbigOp(ch) => f
-                .debug_tuple("AmbigOp")
-                .field(&(*ch as u8 as char))
-                .finish(),
-        }
-    }
 }
 
 impl<'src> TokenKind<'src> {

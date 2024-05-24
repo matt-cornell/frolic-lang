@@ -188,10 +188,10 @@ impl Runnable for FrolicDebugHir {
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
+        let bump = BumpAlloc::new();
         let ast = parse_tl(&toks, file, &errs, HirAsts::new());
-
-        let module = HirModule::new(file.to_string());
-        lower_to_hir(&ast, &errs, &module, None);
+        let module = lower_to_ret_module(&ast, &bump, &errs, None, file, "debug_hir".to_string());
+        std::mem::drop(ast);
 
         {
             fmt2io::write(&mut stdout, |writer| {

@@ -1,31 +1,30 @@
 use super::*;
 
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::IntLitAST<S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, S: Span> ToHir<'b, F> for asts::IntLitAST<S> {
+    fn local(
         &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::Int(self.val)), false)
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        (Operand::Const(Constant::Int(self.val)), Ok(()))
     }
 }
-
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::FloatLitAST<S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, S: Span> ToHir<'b, F> for asts::FloatLitAST<S> {
+    fn local(
         &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::Float(self.val)), false)
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        (Operand::Const(Constant::Float(self.val)), Ok(()))
     }
 }
-
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::StringLitAST<'src, S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::StringLitAST<'src, S> {
+    fn local(
         &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::String(self.val.clone())), false)
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        let val = glb.alloc.alloc_slice_copy(&self.val).into_ref();
+        (Operand::Const(Constant::String(val)), Ok(()))
     }
 }

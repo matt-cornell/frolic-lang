@@ -1,78 +1,66 @@
 use super::*;
 
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::CommentAST<'src, S> {
-    fn local<'l, 'g: 'l>(
-        &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::Error), false)
-    }
+impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::CommentAST<'src, S> {
     fn global(
         &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
-        _loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        false
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInGlobalContext,
+    ) -> LowerResult {
+        Ok(())
+    }
+    fn local(
+        &self,
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        (const_err(), Ok(()))
     }
 }
-
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::ErrorAST<S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, S: Span> ToHir<'b, F> for asts::ErrorAST<S> {
+    fn local(
         &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::Error), false)
-    }
-    fn global(
-        &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
-        _loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        false
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        (const_err(), Ok(()))
     }
 }
-
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::NullAST<S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, S: Span> ToHir<'b, F> for asts::NullAST<S> {
+    fn local(
         &self,
-        _glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        (Operand::Constant(Constant::Null), false)
-    }
-    fn global(
-        &self,
-        _glb: &GlobalContext<'_, 'src, Self::Span, F>,
-        _loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        false
+        _glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        (Operand::Const(Constant::Null), Ok(()))
     }
 }
-
-impl<'src, S: Span, F: Copy> ToHir<'src, F> for asts::VarAST<'src, S> {
-    fn local<'l, 'g: 'l>(
+impl<'b, 'src: 'b, F: Clone, S: Span> ToHir<'b, F> for asts::VarAST<'src, S> {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        use std::fmt::Write;
         if self.global.is_none() {
-            if let Some(val) = loc.locals.lookup(&self.name) {
-                return (Operand::Instruction(val.clone()), false);
+            if let Some(&v) = loc.locals.lookup(&*self.name) {
+                return (Operand::Inst(v), Ok(()));
             }
-            if let Some(&val) = loc.globals.lookup(&self.name) {
-                return (Operand::Global(val), false);
-            }
-        } else {
-            if let Some(&val) = loc.globals.scopes[0].get(&self.name) {
-                return (Operand::Global(val), false);
+            let mut storage = String::new();
+            for pre in loc.global_prefixes.iter().rev() {
+                let _ = write!(storage, "{pre}.{}", self.name);
+                if let Some(&(_, v)) = glb.global_syms.get(&*storage) {
+                    return (Operand::Global(v), Ok(()));
+                }
             }
         }
+        let name = glb.intern_cow(&self.name);
+        if let Some(&(_, v)) = glb.global_syms.get(name) {
+            return (Operand::Global(v), Ok(()));
+        }
         (
-            Operand::Constant(Constant::Error),
-            (glb.report)(HirError::UnresolvedName {
-                name: self.name.clone(),
+            const_err(),
+            (glb.report)(HirError::UnboundVariable {
+                name,
                 span: self.loc(),
             }),
         )

@@ -1,215 +1,192 @@
 use super::*;
-use smallvec::SmallVec;
+use std::collections::hash_map::Entry;
 
-impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::LetAST<'src, A> {
-    fn local<'l, 'g: 'l>(
+impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetAST<'src, A> {
+    fn predef_global(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        if self.name.segs.len() != 1 && self.name.global.is_some() {
-            let erred = (glb.report)(HirError::GlobalDefAtLocal {
-                span: self.name.loc()
-            });
-            if erred {
-                return (const_err(), true);
-            }
-        }
-        let &(ref name, span) = self.name.segs.last().expect("ICE: empty variable name");
-        if let Some((last, rest)) = self.params.split_last() {
-            loc.scope_name.push(name.clone());
-            loc.locals.push_new_scope();
-            let ret = if let Some((first, rest)) = rest.split_first() {
-                let base = loc.glb_segs_base("");
-                let fid = glb.module.push_global(Global::new(base.clone()));
-                let mut stack = Vec::with_capacity(self.params.len());
-                let lid = glb.module.push_global(Global::new(format!("{base}.#{}", rest.len())));
-                let erred = loc.with_new_loc(lid, Block::new("entry"), glb.module, |loc| {
-                    let mut add_arg = |param: &asts::FnParam<'src, A>, id| {
-                        let inst = Instruction {
-                            name: param.name.clone(),
-                            span: param.loc,
-                            kind: InstKind::ArgOf { func: id },
-                        };
-                        let iid = glb.module.intern_inst(inst);
-                        loc.push_inst(iid);
-                        loc.locals.insert(param.name.clone(), iid);
-                        stack.push(id);
-                    };
-                    add_arg(first, fid);
-                    for (n, param) in rest.iter().enumerate() {
-                        let id = glb.module.push_global(Global::new(format!("{base}.#{}", n + 1)));
-                        add_arg(param, id);
-                    }
-                    add_arg(last, lid);
-
-                    let (ret, erred) = self.body.local(glb, loc);
-                    loc.block_term().set(Terminator::Return(ret));
-                    erred
-                });
-
-                for &[caller, callee] in stack.array_windows() {
-                    loc.with_new_loc(caller, Block::new("entry"), glb.module, |loc| loc.block_term().set(Terminator::Return(Operand::Global(callee))));
+        glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        if self.name.segs.is_empty() {
+            return Ok(());
+        };
+        let full_name = glb
+            .alloc
+            .alloc_fmt(format_args!("{}.{}", loc.scope_name, self.name))
+            .into_ref();
+        self.name
+            .segs
+            .iter()
+            .enumerate()
+            .try_fold(loc.scope_name.len(), |mut len, (n, (seg, _))| {
+                len += seg.len() + 1;
+                let name = &full_name[..len];
+                let dnloc = DottedName {
+                    segs: &self.name.segs[..=n],
                 }
-
-                (Operand::Global(fid), erred)
-            } else {
-                let gid = glb.module.push_global(Global::new(loc.glb_segs_base("")));
-
-                let inst = Instruction {
-                    name: last.name.clone(),
-                    span: last.loc,
-                    kind: InstKind::ArgOf { func: gid },
-                };
-                let i = glb.module.intern_inst(inst);
-                loc.locals.insert(last.name.clone(), i);
-
-                let erred = loc.with_new_loc(gid, Block::new("entry"), glb.module, |loc| {
-                    loc.push_inst(i);
-                    let (ret, erred) = self.body.local(glb, loc);
-                    loc.block_term().set(Terminator::Return(ret));
-                    erred
-                });
-
-                (Operand::Global(gid), erred)
-            };
-            loc.scope_name.pop();
-            loc.locals.pop_scope();
-            ret
-        } else {
-            let (res, erred) = self.body.local(glb, loc);
-            let inst = Instruction {
-                name: name.clone(),
-                span,
-                kind: InstKind::Bind(res),
-            };
-            let i = glb.module.intern_inst(inst);
-            loc.push_inst(i);
-            loc.locals.insert(name.clone(), i);
-            (Operand::Instruction(i), erred)
-        }
+                .loc();
+                match glb.global_syms.entry(name) {
+                    Entry::Occupied(e) => {
+                        let (file, Id(old @ &Global { span, .. })) = e.get();
+                        if n == self.name.segs.len() - 1
+                            || old
+                                .as_alias()
+                                .map_or(true, |a| a != Operand::Const(Constant::Namespace(name)))
+                        {
+                            (glb.report)(
+                                HirError::DuplicateDefinition {
+                                    name,
+                                    span: dnloc,
+                                    prev: PrevDef {
+                                        span,
+                                        file: file.clone(),
+                                    },
+                                }
+                                .into(),
+                            )?;
+                        }
+                    }
+                    Entry::Vacant(e) => {
+                        let is_last = n == self.name.segs.len() - 1;
+                        let gid = glb
+                            .alloc
+                            .alloc(Global {
+                                name,
+                                span: dnloc,
+                                captures: None,
+                                is_func: is_last && !self.params.is_empty(),
+                                blocks: LinkedList::NEW,
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
+                        glb.module.push_back(gid);
+                        if !is_last {
+                            let term =
+                                Terminator::Return(Operand::Const(Constant::Namespace(name)));
+                            let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                            gid.push_back(blk);
+                            blk.term.set(term);
+                        }
+                        e.insert((glb.file.clone(), Id(gid)));
+                    }
+                }
+                Ok(len)
+            })
+            .map(|_| ())
     }
-    fn predef_global(&self, glb: &mut GlobalContext<'_, 'src, Self::Span, F>, loc: &mut LocalInGlobalContext<'src, Self::Span>) -> bool {
-        let mangled = loc.glb_format(&self.name);
-
-        if self.params.len() > 1 {
-            for i in (1..=(self.params.len() - 1)).rev() {
-                let mangled = format!("{mangled}.#{i}");
-                let id = glb.module.push_global(Global::new(mangled.clone()));
-                glb.symbols.insert(mangled, UniversalGlobalId {
-                    id, module: glb.module.id(),
-                    file: glb.file, span: self.name.loc(),
-                });
-            }
-        }
-
-        let id = glb.module.push_global(Global::new(mangled.clone()));
-        glb.symbols.insert(mangled, UniversalGlobalId {
-            id, module: glb.module.id(),
-            file: glb.file, span: self.name.loc(),
-        });
-
-        loc.globals.insert(self.name.segs.last().expect("ICE: empty variable name").0.clone(), id);
-        false
-    }
-
     fn global(
         &self,
-        glb: &GlobalContext<'_, 'src, Self::Span, F>,
-        loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        let mangled = loc.glb_format(&self.name);
-        let Some(fid) = glb.symbols.get(&mangled) else {
-            return (glb.report)(HirError::MangledGlobalNotFound {
-                name: mangled,
-                span: self.loc(),
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        use std::fmt::Write;
+        if self.name.segs.is_empty() {
+            return (glb.report)(HirIce::EmptyVarName { span: self.kw }.into());
+        }
+        let old_len = loc.scope_name.len();
+        let _ = write!(loc.scope_name, ".{}", self.name);
+        let Some(&(_, Id(outer))) = glb.global_syms.get(&*loc.scope_name) else {
+            return (glb.report)(
+                HirIce::CouldntFindInTable {
+                    name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+                    span: self.name.loc(),
+                }
+                .into(),
+            );
+        };
+        let erred = if let Some((last, without_last)) = self.params.split_last() {
+            if let Some((_first, rest)) = without_last.split_first() {
+                let dnloc = self.name.loc();
+                let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
+                stack.push(outer);
+                for i in 1..=rest.len() {
+                    let gid = glb
+                        .alloc
+                        .alloc(Global {
+                            name: glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref(),
+                            span: dnloc,
+                            captures: stack.last().copied(),
+                            is_func: true,
+                            blocks: LinkedList::NEW,
+                            link: LinkedListLink::NEW,
+                        })
+                        .into_ref();
+                    glb.module.push_back(gid);
+                    stack.push(gid);
+                }
+                let inner = glb
+                    .alloc
+                    .alloc(Global {
+                        name: glb.alloc.alloc_fmt(format_args!("{}.#{}", loc.scope_name, rest.len() + 1)).into_ref(),
+                        span: dnloc,
+                        captures: stack.last().copied(),
+                        is_func: true,
+                        blocks: LinkedList::NEW,
+                        link: LinkedListLink::NEW,
+                    })
+                    .into_ref();
+                glb.module.push_back(inner);
+                stack.push(inner);
+                let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                inner.push_back(blk);
+                loc.in_local(Id(blk), |loc| {
+                    for ([caller, callee], param) in stack.array_windows().zip(without_last) {
+                        let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
+                        caller.push_back(blk);
+                        let name = glb.intern_cow(&param.name);
+                        let inst = glb.alloc.alloc(Inst {
+                            name, span: param.loc,
+                            kind: InstKind::ArgOf { func: Id(caller) },
+                            link: LinkedListLink::NEW,
+                        }).into_ref();
+                        loc.insert.0.push_back(inst);
+                        loc.locals.insert(name, Id(inst));
+                    }
+                    {
+                        let name = glb.intern_cow(&last.name);
+                        let inst = glb.alloc.alloc(Inst {
+                            name, span: last.loc,
+                            kind: InstKind::ArgOf { func: Id(inner) },
+                            link: LinkedListLink::NEW,
+                        }).into_ref();
+                        loc.insert.0.push_back(inst);
+                        loc.locals.insert(name, Id(inst));
+                    }
+                    let (ret, erred) = self.body.local(glb, loc);
+                    loc.insert.0.term.set(Terminator::Return(ret));
+                    erred
+                })
+            } else {
+                let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                outer.push_back(blk);
+                loc.in_local(Id(blk), |loc| {
+                    let name = glb.intern_cow(&last.name);
+                    let inst = glb
+                        .alloc
+                        .alloc(Inst {
+                            name,
+                            span: last.loc,
+                            kind: InstKind::ArgOf { func: Id(outer) },
+                            link: LinkedListLink::NEW,
+                        })
+                        .into_ref();
+                    loc.insert.0.push_back(inst);
+                    loc.locals.insert(name, Id(inst));
+                    let (ret, erred) = self.body.local(glb, loc);
+                    loc.insert.0.term.set(Terminator::Return(ret));
+                    erred
+                })
+            }
+        } else {
+            let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+            outer.push_back(blk);
+            loc.in_local(Id(blk), |loc| {
+                let (ret, erred) = self.body.local(glb, loc);
+                loc.insert.0.term.set(Terminator::Return(ret));
+                erred
             })
         };
-        debug_assert_eq!(fid.module, glb.module.id(), "ICE: inserted global from a different module");
-
-        loc.with_pushed_name(&self.name, |loc| {
-            if let Some((last, rest)) = self.params.split_last() {
-                if let Some((first, rest)) = rest.split_first() {
-                    // this takes the number of previously curried arguments!
-                    let get_curried = |n| {
-                        let mangled = format!("{mangled}.#{n}");
-                        if let Some(id) = glb.symbols.get(&mangled) {
-                            debug_assert_eq!(id.module, glb.module.id(), "ICE: inserted global from a different module");
-                            Ok(id.id)
-                        } else {
-                            Err((glb.report)(HirError::MangledGlobalNotFound {
-                                name: mangled,
-                                span: self.loc(),
-                            }))
-                        }
-                    };
-
-                    let lid = match get_curried(self.params.len() - 1) {
-                        Ok(id) => id,
-                        Err(erred) => return erred,
-                    };
-
-                    let mut loc_ = LocalInLocalContext::new(lid, Block::new("entry"), std::mem::take(loc));
-                    let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
-
-                    let mut add_arg = |param: &asts::FnParam<'src, A>, id| {
-                        let inst = Instruction {
-                            name: param.name.clone(),
-                            span: param.loc,
-                            kind: InstKind::ArgOf { func: id },
-                        };
-                        let iid = glb.module.intern_inst(inst);
-                        loc_.push_inst(iid);
-                        loc_.locals.insert(param.name.clone(), iid);
-                        stack.push(id);
-                    };
-                    add_arg(first, fid.id);
-
-                    for (n, param) in rest.iter().enumerate() {
-                        match get_curried(n + 1) {
-                            Ok(mid) => add_arg(param, mid),
-                            Err(true) => {
-                                *loc = loc_.to_global(glb.module);
-                                return true;
-                            },
-                            Err(false) => {}
-                        }
-                    }
-
-                    add_arg(last, lid);
-                    let (op, erred) = self.body.local(glb, &mut loc_);
-                    loc_.block_term().set(Terminator::Return(op));
-
-                    for &[caller, callee] in stack.array_windows() {
-                        loc_.goto_pushed_in(caller, Block::with_term("entry", Terminator::Return(Operand::Global(callee))), glb.module);
-                    }
-
-                    *loc = loc_.to_global(glb.module);
-                    erred
-                } else {
-                    let mut loc_ = LocalInLocalContext::new(fid.id, Block::new("entry"), std::mem::take(loc));
-                    
-                    let inst = Instruction {
-                        name: last.name.clone(),
-                        span: last.loc,
-                        kind: InstKind::ArgOf { func: fid.id },
-                    };
-                    let iid = glb.module.intern_inst(inst);
-                    loc_.push_inst(iid);
-                    loc_.locals.insert(last.name.clone(), iid);
-
-                    let (op, erred) = self.body.local(glb, &mut loc_);
-                    loc_.block_term().set(Terminator::Return(op));
-                    *loc = loc_.to_global(glb.module);
-                    erred
-                }
-            } else {
-                let mut loc_ = LocalInLocalContext::new(fid.id, Block::new("entry"), std::mem::take(loc));
-                let (op, erred) = self.body.local(glb, &mut loc_);
-                loc_.block_term().set(Terminator::Return(op));
-                *loc = loc_.to_global(glb.module);
-                erred
-            }
-        })
+        loc.scope_name.truncate(old_len);
+        erred
     }
 }

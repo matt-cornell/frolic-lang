@@ -8,5 +8,6 @@ repository.workspace = true
 
 [dependencies]
 bstr.workspace = true
+derivative.workspace = true
 frolic-utils.workspace = true
 smallvec.workspace = true

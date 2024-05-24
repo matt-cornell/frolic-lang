@@ -17,23 +17,25 @@ struct Parser<'src, 'a, A, F, S: Span> {
     errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
     _asts: PhantomData<A>,
 }
-impl<'src, 'a, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
+impl<'src, 'a, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     /// Create a new parser
     pub fn new(
@@ -97,7 +99,7 @@ where
         ))
     }
 
-    fn eat_comment(&mut self, out: &mut Vec<A::AstBox<'src>>) -> bool {
+    fn eat_comment(&mut self, out: &mut Vec<A::AstBox>) -> bool {
         loop {
             let Some(tok) = self.input.get(self.index) else {
                 return false;
@@ -152,7 +154,7 @@ where
     fn parse_ident(
         &mut self,
         necessary: bool,
-        out: &mut Vec<A::AstBox<'src>>,
+        out: &mut Vec<A::AstBox>,
     ) -> (Option<(&'src str, S)>, bool) {
         let orig = self.index;
         match self.current_token() {
@@ -243,7 +245,7 @@ where
     }
 
     /// Parse a program at the top level.
-    fn parse_top_level_impl(&mut self) -> (Vec<A::AstBox<'src>>, bool) {
+    fn parse_top_level_impl(&mut self) -> (Vec<A::AstBox>, bool) {
         let mut out = Vec::new();
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
@@ -302,14 +304,14 @@ where
         (out, false)
     }
 
-    pub fn parse_top_level(&mut self) -> Vec<A::AstBox<'src>> {
+    pub fn parse_top_level(&mut self) -> Vec<A::AstBox> {
         self.parse_top_level_impl().0
     }
 }
 
 pub fn parse_expr<
     'src,
-    A: AstDefs,
+    A: AstDefs<'src>,
     F: Copy,
     S: SpanConstruct,
     E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
@@ -318,30 +320,32 @@ pub fn parse_expr<
     file: F,
     mut errs: E,
     _defs: A,
-) -> A::AstBox<'src>
+) -> A::AstBox
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     parser.parse_expr(false, false, &mut vec![]).0
 }
 pub fn parse_tl<
     'src,
-    A: AstDefs,
+    A: AstDefs<'src>,
     F: Copy,
     S: SpanConstruct,
     E: ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
@@ -350,23 +354,25 @@ pub fn parse_tl<
     file: F,
     mut errs: E,
     _defs: A,
-) -> asts::FrolicAST<A::AstBox<'src>, F>
+) -> asts::FrolicAST<A::AstBox, F>
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     let nodes = parser.parse_top_level();

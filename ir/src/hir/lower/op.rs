@@ -1,109 +1,71 @@
 use super::*;
-use smallvec::smallvec;
 
-impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::FunctionTypeAST<A> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::ShortCircuitAST<A> {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        let (arg, err) = self.arg.local(glb, loc);
-        if err {
-            return (const_err(), true);
-        }
-        let (ret, err) = self.ret.local(glb, loc);
-        if err {
-            return (const_err(), true);
-        }
-
-        let inst = Instruction {
-            name: "".into(),
-            span: self.loc(),
-            kind: InstKind::FunctionTy { arg, ret },
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        let (cond, Ok(())) = self.lhs.local(glb, loc) else {
+            return (const_err(), Err(EarlyReturn));
         };
-
-        let i = glb.module.intern_inst(inst);
-
-        loc.insert_blk.insts.push(i);
-
-        (Operand::Instruction(i), false)
+        let cond_blk = loc.insert.0;
+        let merge = Id(glb.alloc.alloc(Block::new("merge")).into_ref());
+        let alt = Id(glb.alloc.alloc(Block::new("if_true")).into_ref());
+        alt.0.term.set(Terminator::UncondBr { blk: merge });
+        loc.insert = alt;
+        let (alt_val, erred) = self.rhs.local(glb, loc);
+        cond_blk.term.set(if self.is_or {
+            Terminator::CondBr {
+                cond,
+                if_true: merge,
+                if_false: alt,
+            }
+        } else {
+            Terminator::CondBr {
+                cond,
+                if_true: alt,
+                if_false: merge,
+            }
+        });
+        loc.insert = merge;
+        let opts = glb
+            .alloc
+            .alloc([(alt, alt_val), (Id(cond_blk), cond)])
+            .into_ref();
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.loc(),
+                kind: InstKind::Phi(opts),
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
+        loc.insert.0.push_back(inst);
+        (Operand::Inst(Id(inst)), erred)
     }
 }
-
-impl<'src, F: Copy, A: ToHir<'src, F>> ToHir<'src, F> for asts::ShortCircuitAST<A> {
-    fn local<'l, 'g: 'l>(
+impl<'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::FunctionTypeAST<A> {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
-        let (cond, erred) = self.lhs.local(glb, loc);
-        if erred {
-            return (const_err(), true);
-        }
-
-        let f = loc.insert_func;
-
-        let cond_blk = loc.push_swap_blk(&glb.module, Block::new("alt"));
-
-        loc.block_term()
-            .set(Terminator::UncondBr(BlockId::invalid()));
-        let (alt_val, erred) = self.rhs.local(glb, loc);
-
-        debug_assert_eq!(
-            loc.insert_func, f,
-            "ICE: modified insert function in the middle of if/else"
-        );
-
-        let alt_blk = loc.push_swap_blk(&glb.module, Block::new("merge"));
-        let func = &glb.module[f];
-        
-        loc.lazy_block_id(func[alt_blk].term.map_ref(|term| {
-            if let Terminator::UncondBr(br) = term {
-                br
-            } else {
-                unreachable!("ICE: modified return")
-            }
-        }));
-        if self.is_or {
-            func[cond_blk].term.set(Terminator::CondBr {
-                cond: cond.clone(),
-                if_true: BlockId::invalid(),
-                if_false: alt_blk,
-            });
-            loc.lazy_block_id(func[cond_blk].term.map_ref(|term| {
-                if let Terminator::CondBr { if_true: br, .. } = term {
-                    br
-                } else {
-                    unreachable!("ICE: modified return")
-                }
-            }));
-        } else {
-            func[cond_blk].term.set(Terminator::CondBr {
-                cond: cond.clone(),
-                if_true: alt_blk,
-                if_false: BlockId::invalid(),
-            });
-            loc.lazy_block_id(func[cond_blk].term.map_ref(|term| {
-                if let Terminator::CondBr { if_false: br, .. } = term {
-                    br
-                } else {
-                    unreachable!("ICE: modified return")
-                }
-            }));
-
-        }
-        let ret = if erred {
-            const_err()
-        } else {
-            let inst = Instruction {
-                name: "sc_op".into(),
-                span: self.loc(),
-                kind: InstKind::Phi(smallvec![(alt_blk, alt_val), (cond_blk, cond)]),
-            };
-            let id = glb.module.intern_inst(inst);
-            loc.push_inst(id);
-            Operand::Instruction(id)
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        let (arg, Ok(())) = self.arg.local(glb, loc) else {
+            return (const_err(), Err(EarlyReturn));
         };
-        (ret, erred)
+        let (ret, erred) = self.ret.local(glb, loc);
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.loc(),
+                kind: InstKind::FnType { arg, ret },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
+        loc.insert.0.push_back(inst);
+        (Operand::Inst(Id(inst)), erred)
     }
 }

@@ -155,10 +155,16 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 '}' => single_char!(TokenKind::Close(Delim::Brace)),
                 '[' => single_char!(TokenKind::Open(Delim::Bracket)),
                 ']' => single_char!(TokenKind::Close(Delim::Bracket)),
-                '=' => if self.input.get(self.index + 1).map_or(false, |c| b"$&*%+-/=<>@^|!.:?~".contains(c)) {
-                    self.parse_inf_op();
-                } else {
-                    single_char!(TokenKind::Special(SpecialChar::Equals))
+                '=' => {
+                    if self
+                        .input
+                        .get(self.index + 1)
+                        .map_or(false, |c| b"$&*%+-/=<>@^|!.:?~".contains(c))
+                    {
+                        self.parse_inf_op();
+                    } else {
+                        single_char!(TokenKind::Special(SpecialChar::Equals))
+                    }
                 }
                 ':' => {
                     let (ch, len) = if self.input.get(self.index + 1) == Some(&b':') {

@@ -1,56 +1,46 @@
 use super::*;
 use smallvec::smallvec;
+use std::borrow::Cow;
 
-impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     fn parse_dottedname(
         &mut self,
-        out: &mut Vec<A::AstBox<'src>>,
+        out: &mut Vec<A::AstBox>,
     ) -> (Option<DottedName<'src, S>>, bool) {
         if self.eat_comment(out) {
             return (None, true);
         }
-        let global: Option<S> = if let Some(Token {
-            kind: TokenKind::Special(SpecialChar::Dot),
-            span,
-        }) = self.input.get(self.index)
-        {
-            self.index += 1;
-            if self.eat_comment(out) {
-                return (None, true);
-            }
-            Some(*span)
-        } else {
-            None
-        };
         let mut segs = Vec::<(_, S)>::new();
         {
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
-                (Some(seg), true) => return (Some(DottedName::<S>::new(global, vec![seg])), true),
+                (Some(seg), true) => return (Some(DottedName::new(vec![seg])), true),
                 (None, false) => return (None, false),
                 (None, true) => return (None, true),
             }
         }
         loop {
             if self.eat_comment(out) {
-                return (Some(DottedName::<S>::new(global, segs)), true);
+                return (Some(DottedName::new(segs)), true);
             }
             if !matches!(
                 self.input.get(self.index),
@@ -59,26 +49,51 @@ where
                     ..
                 })
             ) {
-                return (Some(DottedName::<S>::new(global, segs)), false);
+                return (Some(DottedName::new(segs)), false);
             }
             self.index += 1;
             if self.eat_comment(out) {
-                return (Some(DottedName::<S>::new(global, segs)), true);
+                return (Some(DottedName::new(segs)), true);
             }
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
                 (seg, ret) => {
                     segs.extend(seg);
-                    return (Some(DottedName::<S>::new(global, segs)), ret);
+                    return (Some(DottedName::new(segs)), ret);
                 }
             }
         }
     }
 
+    fn get_docs(&self) -> Cow<'src, [u8]> {
+        let mut out = Cow::Borrowed(&[][..]);
+        let mut index = self.index;
+        while let Some(idx) = index.checked_sub(1) {
+            index = idx;
+            match self.input[idx].kind {
+                TokenKind::Comment(_, CommentKind::Ignore) => {},
+                TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
+                    if !comm.is_empty() {
+                        if out.is_empty() {
+                            out = comm.clone();
+                        } else {
+                            let r = out.to_mut();
+                            r.push(b'\n');
+                            r.extend_from_slice(&comm);
+                        }
+                    }
+                }
+                _ => break,
+            }
+        }
+        out
+    }
+
     pub fn parse_let_decl(
         &mut self,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (Option<asts::LetAST<'src, A::AstBox<'src>>>, bool) {
+        out: &mut Vec<A::AstBox>,
+    ) -> (Option<asts::LetAST<'src, A::AstBox>>, bool) {
+        let doc = self.get_docs();
         let kw = self.input[self.index].span;
         self.index += 1;
         let name = {
@@ -88,6 +103,7 @@ where
                     return (
                         Some(asts::LetAST {
                             kw,
+                            doc,
                             name,
                             params: smallvec![],
                             ret: None,
@@ -109,6 +125,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -134,6 +151,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -150,6 +168,7 @@ where
                                 return (
                                     Some(asts::LetAST {
                                         kw,
+                                        doc,
                                         name,
                                         params,
                                         ret: None,
@@ -191,6 +210,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -213,6 +233,7 @@ where
                             return (
                                 Some(asts::LetAST {
                                     kw,
+                                    doc,
                                     name,
                                     params,
                                     ret: None,
@@ -251,6 +272,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -271,6 +293,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -285,6 +308,7 @@ where
                         return (
                             Some(asts::LetAST {
                                 kw,
+                                doc,
                                 name,
                                 params,
                                 ret: None,
@@ -307,6 +331,7 @@ where
                             return (
                                 Some(asts::LetAST {
                                     kw,
+                                    doc,
                                     name,
                                     params,
                                     ret: None,
@@ -355,6 +380,7 @@ where
                 return (
                     Some(asts::LetAST {
                         kw,
+                        doc,
                         name,
                         params,
                         ret: None,
@@ -381,6 +407,7 @@ where
             return (
                 Some(asts::LetAST {
                     kw,
+                    doc,
                     name,
                     params,
                     ret,
@@ -394,6 +421,7 @@ where
         (
             Some(asts::LetAST {
                 kw,
+                doc,
                 name,
                 params,
                 ret,

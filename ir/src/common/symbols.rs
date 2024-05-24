@@ -3,101 +3,80 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::{BuildHasher, Hash, RandomState};
 
-/// Convenience type with lookups for nested scopes. Inner scopes can have symbols defined that are
-/// inaccessible from outer scopes.
+/// Wrapper around a `Vec` of `HashMap`s, but makes lookup more convenient and asserts that the
+/// scope list isn't empty.
 #[derive(Debug, Clone)]
 pub struct Scopes<K, V, S = RandomState> {
-    pub scopes: SmallVec<[HashMap<K, V, S>; 1]>,
+    scopes: SmallVec<[HashMap<K, V, S>; 1]>,
 }
 impl<K, V, S> Scopes<K, V, S> {
-    /// Create a scope list that's empty.
-    #[inline]
-    pub const fn new_empty() -> Self {
+    pub fn with_init_scope(scope: HashMap<K, V, S>) -> Self {
         Self {
-            scopes: SmallVec::new_const(),
+            scopes: smallvec![scope],
         }
     }
-    /// Create a scope list with a single scope.
-    #[inline]
-    pub fn new_single() -> Self
-    where
-        S: Default,
-    {
+    /// Push a given scope to the scope list.
+    pub fn push_scope(&mut self, scope: HashMap<K, V, S>) {
+        self.scopes.push(scope);
+    }
+    /// Pop the innermost scope from the list. Note that the base scope cannot be popped.
+    pub fn pop_scope(&mut self) -> Option<HashMap<K, V, S>> {
+        (self.scopes.len() > 1).then(|| self.scopes.pop().unwrap())
+    }
+    /// Get the scope stack as a slice. This slice is never empty.
+    pub fn scopes(&self) -> &[HashMap<K, V, S>] {
+        &self.scopes
+    }
+    /// Get the scope stack as a mutable slice. This slice is never empty.
+    pub fn scopes_mut(&mut self) -> &mut [HashMap<K, V, S>] {
+        &mut self.scopes
+    }
+    pub fn first_scope(&self) -> &HashMap<K, V, S> {
+        &self.scopes[0]
+    }
+    pub fn first_scope_mut(&mut self) -> &mut HashMap<K, V, S> {
+        &mut self.scopes[0]
+    }
+    pub fn last_scope(&self) -> &HashMap<K, V, S> {
+        self.scopes.last().unwrap()
+    }
+    pub fn last_scope_mut(&mut self) -> &mut HashMap<K, V, S> {
+        self.scopes.last_mut().unwrap()
+    }
+}
+impl<K, V, S: Default> Scopes<K, V, S> {
+    pub fn new() -> Self {
         Self {
             scopes: smallvec![HashMap::default()],
         }
     }
-
-    /// Create a scope list with a single scope, using the provided hasher.
-    #[inline]
-    pub fn new_single_with_hasher(hasher: S) -> Self {
-        Self {
-            scopes: smallvec![HashMap::with_hasher(hasher)],
-        }
-    }
-
-    /// Push a scope to the stack. Same as `self.scopes.push`.
-    #[inline(always)]
-    pub fn push_scope(&mut self, scope: HashMap<K, V, S>) {
-        self.scopes.push(scope);
-    }
-    /// Create an empty scope and push it to the stack. Same as
-    /// `self.scopes.push(Default::default())`.
-    #[inline(always)]
+    /// Push a new scope to the scope list.
     pub fn push_new_scope(&mut self)
     where
         S: Default,
     {
-        self.scopes.push(Default::default());
-    }
-
-    /// Pop a scope from the stack, returning it if there was one.
-    /// Same as `self.scopes.pop()`.
-    #[inline(always)]
-    pub fn pop_scope(&mut self) -> Option<HashMap<K, V, S>> {
-        self.scopes.pop()
+        self.scopes.push(HashMap::default());
     }
 }
 impl<K: Hash + Eq, V, S: BuildHasher> Scopes<K, V, S> {
-    pub fn insert(&mut self, key: K, val: V) -> Option<V> {
-        self.scopes
-            .last_mut()
-            .expect("ICE: attempt to insert symbol without scope")
-            .insert(key, val)
-    }
     pub fn lookup<Q: Hash + Eq + ?Sized>(&self, key: &Q) -> Option<&V>
     where
         K: Borrow<Q>,
     {
         self.scopes.iter().rev().find_map(|s| s.get(key))
     }
-    pub fn lookup_all<'a: 'b, 'b, Q: Hash + Eq + ?Sized>(
-        &'a self,
-        key: &'b Q,
-    ) -> impl DoubleEndedIterator<Item = &'a V> + Clone + 'b
+    pub fn lookup_mut<Q: Hash + Eq + ?Sized>(&mut self, key: &Q) -> Option<&mut V>
     where
         K: Borrow<Q>,
     {
-        self.scopes.iter().rev().filter_map(move |s| s.get(key))
+        self.scopes.iter_mut().rev().find_map(|s| s.get_mut(key))
+    }
+    pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+        self.last_scope_mut().insert(key, value)
     }
 }
-impl<K, V, S: BuildHasher> Scopes<K, Vec<V>, S> {
-    /// For use with multimaps: insert or append a value. Returns `true` if the key already
-    /// existed.
-    pub fn insert_one(&mut self, key: K, val: V) -> bool
-    where
-        K: Hash + Eq,
-    {
-        let scope = self
-            .scopes
-            .last_mut()
-            .expect("ICE: attempt to insert symbol without scope");
-        if let Some(vec) = scope.get_mut(&key) {
-            vec.push(val);
-            true
-        } else {
-            scope.insert(key, vec![val]);
-            false
-        }
+impl<K, V, S: Default> Default for Scopes<K, V, S> {
+    fn default() -> Self {
+        Self::new()
     }
 }

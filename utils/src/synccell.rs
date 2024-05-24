@@ -1,6 +1,7 @@
 use spin::mutex::spin::SpinMutex as Mutex;
 use std::cell::Cell;
 use std::fmt::{self, Debug, Formatter};
+use std::hash::{Hash, Hasher};
 
 /// Acts like a `Cell` but is `Sync`. Under the hood, uses a spinlock.
 #[derive(Default)]
@@ -63,6 +64,22 @@ impl<T: Debug> Debug for SyncCell<T> {
         f.debug_struct("SyncCell")
             .field("inner", &inner)
             .finish_non_exhaustive()
+    }
+}
+impl<T: Clone> Clone for SyncCell<T> {
+    fn clone(&self) -> Self {
+        Self::new(self.with(|v| v.clone()))
+    }
+}
+impl<T: PartialEq> PartialEq for SyncCell<T> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(&self.lock, &other.lock) || self.with(|lhs| other.with(|rhs| lhs == rhs))
+    }
+}
+impl<T: Eq> Eq for SyncCell<T> {}
+impl<T: Hash> Hash for SyncCell<T> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        self.with(|v| v.hash(hasher))
     }
 }
 unsafe impl<T: Sync> Sync for SyncCell<T> {}

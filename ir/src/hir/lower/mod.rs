@@ -1,25 +1,22 @@
-//! ## About HIR lowering and contexts
-//! The `ToHir` trait takes both a global and a local context. The global context contains things
-//! relevant to the entire program, such as definitions and the global symbol table, while the
-//! local context contains things only relevant to child nodes, like the scoped symbol table and of
-//! course the name of the scope.
-
 use super::lang::*;
-use crate::common::symbols::*;
+use crate::common::list::*;
+use crate::common::symbols::Scopes;
+use bump_scope::allocator_api2::alloc::{Allocator, Global as AGlobal};
+use bump_scope::*;
 use derivative::Derivative;
+use derive_more::{Deref, DerefMut};
 use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
 use std::borrow::Cow;
-use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use smallvec::{smallvec, SmallVec};
+
+#[cfg(feature = "rayon")]
 use thread_local::ThreadLocal;
 
 mod error;
-pub use error::HirError;
-
-const fn const_err<'a, S: Span>() -> Operand<'a, S> {
-    Operand::Constant(Constant::Error)
-}
+pub use error::*;
 
 mod defs;
 mod flow;
@@ -28,398 +25,378 @@ mod groups;
 mod lits;
 mod misc;
 mod op;
+mod types;
 
-/// Global context for HIR lowering.
+const fn const_err<'b, S>() -> Operand<'b, S> {
+    Operand::Const(Constant::Error)
+}
+
 #[derive(Derivative)]
 #[derivative(Debug)]
-#[repr(C)]
-pub struct GlobalContext<'a, 'src, S: Span, F: Copy> {
-    pub module: &'a Module<'src, S>,
-    /// Symbol table. Note that this is behind an immutable reference during the actual lowering.
-    pub symbols: &'a mut HashMap<String, UniversalGlobalId<'src, S, F>>,
+pub struct GlobalPreContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> {
     #[derivative(Debug = "ignore")]
-    pub report: &'a dyn Fn(HirError<'src, S>) -> bool,
+    pub report: &'g dyn Fn(HirError<'b, S, F>) -> LowerResult,
+    pub alloc: &'g BumpScope<'b, A>,
+    pub module: &'b Module<'b, S>,
+    pub global_syms: &'g mut HashMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
 
-/// Context for HIR lowering, with the added contraint that the reporter is `Sync`.
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub struct GlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> {
+    #[derivative(Debug = "ignore")]
+    pub report: &'g dyn Fn(HirError<'b, S, F>) -> LowerResult,
+    pub alloc: &'g BumpScope<'b, A>,
+    pub module: &'b Module<'b, S>,
+    pub global_syms: &'g HashMap<&'b str, (F, GlobalId<'b, S>)>,
+    pub file: F,
+}
+impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalContext<'g, 'b, S, F, A> {
+    pub fn intern_cow<'src: 'b>(&self, cow: &Cow<'src, str>) -> &'b str {
+        match cow {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(s) => self.alloc.alloc_str(s).into_ref(),
+        }
+    }
+}
+
 #[cfg(feature = "rayon")]
 #[derive(Derivative)]
 #[derivative(Debug)]
-#[repr(C)]
-pub struct SyncGlobalContext<'a, 'src, S: Span, F: Copy> {
-    pub module: &'a Module<'src, S>,
-    /// Symbol table. Note that this is behind an immutable reference during the actual lowering.
-    pub symbols: &'a mut HashMap<String, UniversalGlobalId<'src, S, F>>,
+pub struct SyncGlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone + Sync = AGlobal> {
     #[derivative(Debug = "ignore")]
-    pub report: &'a (dyn Fn(HirError<'src, S>) -> bool + Sync),
+    pub report: &'g (dyn Fn(HirError<'b, S, F>) -> LowerResult + Send + Sync),
+    pub alloc_tl: ThreadLocal<BumpPoolGuard<'b, A, 1, true, true>>,
+    pub alloc_pool: &'b BumpPool<A>,
+    pub module: &'b Module<'b, S>,
+    pub global_syms: &'g HashMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
-impl<'a, 'src, S: Span, F: Copy> SyncGlobalContext<'a, 'src, S, F> {
-    pub fn as_unsync(&self) -> &GlobalContext<'a, 'src, S, F> {
-        // SAFETY: reference compatible
-        unsafe { std::mem::transmute(self) }
+#[cfg(feature = "rayon")]
+impl<'g, 'b, S: Span, F, A: Allocator + Clone + Sync> SyncGlobalContext<'g, 'b, S, F, A> {
+    pub fn alloc(&self) -> &BumpPoolGuard<'b, A, 1, true, true> {
+        self.alloc_tl.get_or(|| self.alloc_pool.get())
     }
-    pub fn as_unsync_mut(&mut self) -> &mut GlobalContext<'a, 'src, S, F> {
-        // SAFETY: reference compatible
-        unsafe { std::mem::transmute(self) }
+    pub fn make_unsync(&self) -> GlobalContext<'_, 'b, S, F, A>
+    where
+        F: Clone,
+    {
+        GlobalContext {
+            report: self.report,
+            alloc: &**self.alloc(),
+            module: self.module,
+            global_syms: self.global_syms,
+            file: self.file.clone(),
+        }
     }
 }
-
-#[derive(Debug, PartialEq)]
-enum ScopeRestoreInner<'src> {
-    Truncate(usize),
-    Replace(Vec<Cow<'src, str>>),
-}
-
-#[derive(Debug, PartialEq)]
-pub struct ScopeRestore<'src> {
-    inner: ScopeRestoreInner<'src>
-}
-
-/// Local context for HIR lowering.
-#[derive(Debug, Clone)]
-pub struct LocalInGlobalContext<'src, S> {
-    pub globals: Scopes<Cow<'src, str>, GlobalId<'src, S>>,
-    pub scope_name: Vec<Cow<'src, str>>,
-}
-impl<'src, S> LocalInGlobalContext<'src, S> {
-    pub fn new() -> Self {
+#[cfg(feature = "rayon")]
+impl<S: Span, F: Clone, A: Allocator + Clone + Sync> Clone for SyncGlobalContext<'_, '_, S, F, A> {
+    fn clone(&self) -> Self {
         Self {
-            globals: Scopes::new_single(),
-            scope_name: Vec::new(),
+            alloc_tl: ThreadLocal::new(),
+            file: self.file.clone(),
+            ..*self
         }
-    }
-    /// Take a name, and return an iterator over the segments of its global spec relative to the local position.
-    pub fn glb_segs<'a>(
-        &'a self,
-        name: &'a DottedName<'src, S>,
-    ) -> impl Iterator<Item = &'a Cow<'src, str>> {
-        name.global
-            .is_none()
-            .then(|| self.scope_name.iter())
-            .into_iter()
-            .flatten()
-            .chain(name.segs.iter().map(|s| &s.0))
-    }
-    /// Globally format a string.
-    pub fn glb_format(&self, name: &DottedName<'src, S>) -> String {
-        self.glb_segs(name).fold(String::new(), |mut out, s| {
-            use std::fmt::Write;
-            let _ = write!(out, ".{s}");
-            out
-        })
-    }
-    pub fn push_name(&mut self, name: &DottedName<'src, S>) -> ScopeRestore<'src> {
-        let it = name.segs.iter().map(|n| n.0.clone());
-        if name.global.is_some() {
-            ScopeRestore {
-                inner: ScopeRestoreInner::Replace(
-                    std::mem::replace(&mut self.scope_name, it.collect())
-                )
-            }
-        } else {
-            let old_len = self.scope_name.len();
-            self.scope_name.extend(it);
-            ScopeRestore { inner: ScopeRestoreInner::Truncate(old_len) }
-        }
-    }
-    pub fn restore_name(&mut self, res: ScopeRestore<'src>) {
-        match res.inner {
-            ScopeRestoreInner::Replace(rep) => {
-                if rep.capacity() > self.scope_name.capacity() {
-                    self.scope_name = rep;
-                } else {
-                    self.scope_name.clear();
-                    self.scope_name.extend(rep);
-                }
-            }
-            ScopeRestoreInner::Truncate(len) => self.scope_name.truncate(len),
-        }
-    }
-    #[inline]
-    pub fn with_pushed_name<R, F: FnOnce(&mut Self) -> R>(&mut self, name: &DottedName<'src, S>, f: F) -> R {
-        let res = self.push_name(name);
-        let ret = f(self);
-        self.restore_name(res);
-        ret
-    }
-}
-impl<S> Default for LocalInGlobalContext<'_, S> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
-#[derive(Debug)]
-pub struct LocalInLocalContext<'a, 'src: 'a, S> {
-    insert_func: GlobalId<'src, S>,
-    insert_blk: Block<'src, S>,
-    resolve_blks: Vec<SyncRef<'a, BlockId<'src, S>>>,
-    blks_base: usize,
-    pub globals: Scopes<Cow<'src, str>, GlobalId<'src, S>>,
-    pub locals: Scopes<Cow<'src, str>, InstId<'src, S>>,
-    pub scope_name: Vec<Cow<'src, str>>,
+#[derive(Debug, Default, Clone)]
+pub struct LocalInGlobalContext<'b> {
+    pub scope_name: String,
+    pub global_prefixes: SmallVec<[&'b str; 1]>,
 }
-impl<'a, 'src: 'a, S> LocalInLocalContext<'a, 'src, S> {
-    pub fn new(
-        insert_func: GlobalId<'src, S>,
-        insert_blk: Block<'src, S>,
-        from: LocalInGlobalContext<'src, S>,
-    ) -> Self {
-        Self {
-            insert_func,
-            insert_blk,
-            resolve_blks: Vec::new(),
-            blks_base: 0,
-            globals: from.globals,
-            locals: Scopes::new_single(),
-            scope_name: from.scope_name,
-        }
-    }
-    pub fn ins_func(&self) -> GlobalId<'src, S> {
-        self.insert_func
-    }
-    pub fn goto_pushed_in(&mut self, id: GlobalId<'src, S>, block: Block<'src, S>, module: &Module<'src, S>) {
-        let old = std::mem::replace(&mut self.insert_blk, block);
-        let old_func = std::mem::replace(&mut self.insert_func, id);
-        let blk_id = module[old_func].push_blk(old);
-        self.resolve_blks.drain(self.blks_base..).for_each(|b| b.set(blk_id));
-    }
-    pub fn block_term(&self) -> &SyncCell<Terminator<'src, S>> {
-        &self.insert_blk.term
-    }
-    pub fn lazy_block_id(&mut self, blk: SyncRef<'a, BlockId<'src, S>>) {
-        self.resolve_blks.push(blk);
-    }
-    pub fn to_global(self, module: &Module<'src, S>) -> LocalInGlobalContext<'src, S> {
-        let id = module[self.insert_func].push_blk(self.insert_blk);
-        self.resolve_blks.into_iter().for_each(|b| b.set(id));
-        LocalInGlobalContext {
-            globals: self.globals,
-            scope_name: self.scope_name,
-        }
-    }
-    pub fn push_swap_blk(
+impl<'b> LocalInGlobalContext<'b> {
+    /// Create and use a temporary local context from this one.
+    pub fn in_local<S, R, F: FnOnce(&mut LocalInLocalContext<'b, S>) -> R>(
         &mut self,
-        module: &Module<'src, S>,
-        blk: Block<'src, S>,
-    ) -> BlockId<'src, S> {
-        let old = std::mem::replace(&mut self.insert_blk, blk);
-        let id = module[self.insert_func].push_blk(old);
-        self.resolve_blks.drain(self.blks_base..).for_each(|b| b.set(id));
-        id
-    }
-    pub fn with_new_loc<R, F: FnOnce(&mut Self) -> R>(&mut self, func: GlobalId<'src, S>, blk: Block<'src, S>, module: &Module<'src, S>, f: F) -> R {
-        let old_start = std::mem::replace(&mut self.blks_base, self.resolve_blks.len());
-        let old_blk = std::mem::replace(&mut self.insert_blk, blk);
-        let old_func = std::mem::replace(&mut self.insert_func, func);
-
-        let ret = f(self);
-
-        self.blks_base = old_start;
-        self.insert_func = old_func;
-        let new_blk = std::mem::replace(&mut self.insert_blk, old_blk);
-        let bid = module[func].push_blk(new_blk);
-        self.resolve_blks.drain(old_start..).for_each(|b| b.set(bid));
-
-        ret
-    }
-
-    pub fn push_inst(&mut self, id: InstId<'src, S>) {
-        self.insert_blk.insts.push(id);
-    }
-
-    /// Take a name, and return an iterator over the segments of its global spec relative to the local position.
-    pub fn glb_segs<'b>(
-        &'b self,
-        name: &'b DottedName<'src, S>,
-    ) -> impl Iterator<Item = &'b Cow<'src, str>> {
-        name.global
-            .is_none()
-            .then(|| self.scope_name.iter())
-            .into_iter()
-            .flatten()
-            .chain(name.segs.iter().map(|s| &s.0))
-    }
-    /// Globally format a string.
-    pub fn glb_format(&self, name: &DottedName<'src, S>) -> String {
-        self.glb_segs(name).fold(String::new(), |mut out, s| {
-            use std::fmt::Write;
-            let _ = write!(out, ".{s}");
-            out
-        })
-    }
-    pub fn glb_segs_base(&self, suffix: impl std::fmt::Display) -> String {
-        use std::fmt::Write;
-        let mut out = String::new();
-        self.scope_name.iter().for_each(|s| {
-            let _ = write!(out, ".{s}");
-        });
-        let _ = write!(out, "{suffix}");
-        out
-    }
-    pub fn push_name(&mut self, name: &DottedName<'src, S>) -> ScopeRestore<'src> {
-        let it = name.segs.iter().map(|n| n.0.clone());
-        if name.global.is_some() {
-            ScopeRestore {
-                inner: ScopeRestoreInner::Replace(
-                    std::mem::replace(&mut self.scope_name, it.collect())
-                )
-            }
-        } else {
-            let old_len = self.scope_name.len();
-            self.scope_name.extend(it);
-            ScopeRestore { inner: ScopeRestoreInner::Truncate(old_len) }
-        }
-    }
-    pub fn restore_name(&mut self, res: ScopeRestore<'src>) {
-        match res.inner {
-            ScopeRestoreInner::Replace(rep) => {
-                if rep.capacity() > self.scope_name.capacity() {
-                    self.scope_name = rep;
-                } else {
-                    self.scope_name.clear();
-                    self.scope_name.extend(rep);
-                }
-            }
-            ScopeRestoreInner::Truncate(len) => self.scope_name.truncate(len),
-        }
-    }
-    #[inline]
-    pub fn with_pushed_name<R, F: FnOnce(&mut Self) -> R>(&mut self, name: &DottedName<'src, S>, f: F) -> R {
-        let res = self.push_name(name);
-        let ret = f(self);
-        self.restore_name(res);
+        insert: BlockId<'b, S>,
+        f: F,
+    ) -> R {
+        let ctx = std::mem::take(self);
+        let mut this = LocalInLocalContext {
+            ctx,
+            insert,
+            locals: Scopes::new(),
+        };
+        let ret = f(&mut this);
+        *self = this.ctx;
         ret
     }
 }
 
-/// Trait for lowering AST nodes.
-#[impl_tools::autoimpl(for<T: trait + ?Sized> &T, Box<T>, std::rc::Rc<T>, std::sync::Arc<T>)]
-pub trait ToHir<'src, F: Copy>: Located {
-    /// Predefine globals. This is the only time a mutable handle to the global context is passed.
-    /// Returns `true` if the reporter says there was a critical failure.
-    fn predef_global(&self, _glb: &mut GlobalContext<'_, 'src, Self::Span, F>, _loc: &mut LocalInGlobalContext<'src, Self::Span>) -> bool {
-        false
-    }
+#[derive(Derivative, Deref, DerefMut)]
+#[derivative(Debug(bound = ""))]
+pub struct LocalInLocalContext<'b, S> {
+    #[deref]
+    #[deref_mut]
+    pub ctx: LocalInGlobalContext<'b>,
+    pub locals: Scopes<&'b str, InstId<'b, S>>,
+    pub insert: BlockId<'b, S>,
+}
 
-    fn local<'l, 'g: 'l>(
+/// Wrapper around `std::any::type_name` that gives a shorter output.
+fn pretty_name<T: ?Sized>() -> &'static str {
+    let mut raw = std::any::type_name::<T>();
+    // trim templates
+    if let Some(idx) = raw.find('<') {
+        raw = &raw[..idx];
+    }
+    // trim module
+    if let Some(idx) = raw.rfind("::") {
+        raw = &raw[(idx + 2)..];
+    }
+    raw
+}
+
+#[allow(unused_variables)]
+#[impl_tools::autoimpl(for<T: trait + ?Sized> &T, Box<T>, std::rc::Rc<T>, std::sync::Arc<T>)]
+pub trait ToHir<'b, F: Clone>: Located {
+    fn local(
         &self,
-        glb: &GlobalContext<'g, 'src, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'l, 'src, Self::Span>,
-    ) -> (Operand<'src, Self::Span>, bool) {
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
+    ) -> (Operand<'b, Self::Span>, LowerResult) {
+        println!("bt: {}", std::backtrace::Backtrace::capture());
         (
-            const_err(),
-            (glb.report)(HirError::GlobalAtLocal {
-                kind: std::any::type_name::<Self>(),
-                span: self.loc(),
-            }),
+            Operand::Const(Constant::Error),
+            (glb.report)(
+                HirIce::GlobalAstAtLocal {
+                    kind: pretty_name::<Self>(),
+                    span: self.loc(),
+                }
+                .into(),
+            ),
         )
     }
 
-    /// Lower to HIR. Returns `true` as the second value if the reporter says there was a critical failure.
-    /// If this AST node shouldn't produce a value, `Operand::Constant(Constant::Error)` should be
-    /// returned.
+    fn predef_global(
+        &self,
+        glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        Ok(())
+    }
     fn global(
         &self,
-        glb: &GlobalContext<'_, 'src, Self::Span, F>,
-        _loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        (glb.report)(HirError::LocalAtGlobal {
-            kind: std::any::type_name::<Self>(),
-            span: self.loc(),
-        })
+        glb: &GlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        (glb.report)(
+            HirIce::LocalAstAtGlobal {
+                kind: pretty_name::<Self>(),
+                span: self.loc(),
+            }
+            .into(),
+        )
     }
-
-    /// Alternate version of `to_hir` that takes a `SyncGlobalContext`. This is only really
-    /// necessary for AST nodes that want to dispatch to their children in parallel.
     #[cfg(feature = "rayon")]
     fn global_sync(
         &self,
-        glb: &SyncGlobalContext<'_, 'src, Self::Span, F>,
-        loc: &mut LocalInGlobalContext<'src, Self::Span>,
-    ) -> bool {
-        self.global(glb.as_unsync(), loc)
+        glb: &SyncGlobalContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        self.global(&glb.make_unsync(), loc)
     }
 }
 
-/// Single-threaded HIR generation, works with or without `rayon`.
-pub mod single_thread {
+pub mod single_threaded {
     use super::*;
-    pub fn lower_to_hir<
-        'src,
-        F: Copy,
-        A: ToHir<'src, F>,
-        E: ErrorReporter<SourcedError<F, HirError<'src, A::Span>>> + Copy,
-    >(
-        ast: &asts::FrolicAST<A, F>,
-        errs: E,
-        module: &Module<'src, A::Span>,
-        symbols: Option<&mut HashMap<String, UniversalGlobalId<'src, A::Span, F>>>,
-    ) {
-        let file = ast.file;
-        let report = &move |error| {
-            let mut errs = errs;
-            errs.report(SourcedError { file, error })
-        };
-        let mut syms = HashMap::default();
-        let mut glb: GlobalContext<'_, 'src, A::Span, F> = GlobalContext {
-            module,
-            file,
-            symbols: symbols.unwrap_or(&mut syms),
-            report,
-        };
-        let mut loc = LocalInGlobalContext::new();
-        let _ = ast.nodes.iter().any(|n| n.predef_global(&mut glb, &mut loc))
-            || ast.nodes.iter().any(|n| n.global(&glb, &mut loc));
-    }
-}
+    use std::cell::UnsafeCell;
 
-/// Multi-threaded HIR generation.
-#[cfg(feature = "rayon")]
-pub mod multi_thread {
-    use super::*;
-    use rayon::prelude::*;
+    /// Single-threaded lowering to HIR.
     pub fn lower_to_hir<
-        'src,
-        F: Copy + Sync,
-        A: ToHir<'src, F> + Send + Sync,
-        E: ErrorReporter<SourcedError<F, HirError<'src, A::Span>>> + Copy + Sync,
+        'b,
+        F: Clone,
+        A: ToHir<'b, F>,
+        E: ErrorReporter<SourcedError<F, HirError<'b, A::Span, F>>>,
     >(
         ast: &asts::FrolicAST<A, F>,
+        alloc: impl Into<&'b BumpScope<'b>>,
+        module: &'b Module<'b, A::Span>,
         errs: E,
-        module: &Module<'src, A::Span>,
-        symbols: Option<&mut HashMap<String, UniversalGlobalId<'src, A::Span, F>>>,
-    ) where
-        A::Span: Send + Sync,
-    {
-        let file = ast.file;
-        let report = &move |error| {
-            let mut errs = errs;
-            errs.report(SourcedError { file, error })
-        };
-        let mut syms = HashMap::default();
-        let mut glb = SyncGlobalContext {
-            module,
-            file,
-            symbols: symbols.unwrap_or(&mut syms),
-            report,
-        };
-        let mut loc = LocalInGlobalContext::new();
-        let erred = ast.nodes.iter().any(|n| n.predef_global(glb.as_unsync_mut(), &mut loc));
-        // SAFETY: only one node at a time within a thread can be using the local context, with no
-        // way to store it. Thread-local, so only one thread can be using a given context.
-        if !erred {
-            let tl = ThreadLocal::new();
-            let _ = ast.nodes.par_iter().with_min_len(32).any(|n| {
-                n.global_sync(&glb, unsafe { &mut *tl.get_or(|| UnsafeCell::new(loc.clone())).get() })
+        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        starting_scope: String,
+    ) -> LowerResult {
+        let file = ast.file.clone();
+        let errs = UnsafeCell::new(errs);
+        let mut default = Default::default();
+        let global_syms = global_syms.unwrap_or(&mut default);
+        let report = &|err: HirError<'b, _, F>| {
+            // SAFETY: this doesn't let the reference escape and we already know it's !Sync
+            let rep = unsafe { &mut *errs.get() };
+            let erred = rep.report(SourcedError {
+                file: file.clone(),
+                error: err,
             });
+            (!erred).then_some(()).ok_or(EarlyReturn)
+        };
+        let alloc = alloc.into();
+        let mut loc = LocalInGlobalContext {
+            global_prefixes: smallvec![alloc.alloc_str(&starting_scope).into_ref()],
+            scope_name: starting_scope,
+        };
+        {
+            let mut glb = GlobalPreContext {
+                report,
+                alloc,
+                module,
+                global_syms,
+                file: ast.file.clone(),
+            };
+            ast.nodes
+                .iter()
+                .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
+        }
+        {
+            let glb = GlobalContext {
+                report,
+                alloc,
+                module,
+                global_syms: &global_syms,
+                file: ast.file.clone(),
+            };
+            ast.nodes.iter().try_for_each(|a| a.global(&glb, &mut loc))
         }
     }
+
+    /// Lower to a new module, returning it.
+    pub fn lower_to_ret_module<
+        'b,
+        F: Clone + Send + Sync,
+        A: ToHir<'b, F> + Send + Sync,
+        E: ErrorReporter<SourcedError<F, HirError<'b, A::Span, F>>> + Copy + Send + Sync,
+    >(
+        ast: &asts::FrolicAST<A, F>,
+        alloc: impl Into<&'b BumpScope<'b>>,
+        errs: E,
+        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        mod_name: impl std::fmt::Display,
+        starting_scope: String,
+    ) -> &'b Module<'b, A::Span>
+    where
+        A::Span: Sync + Span,
+    {
+        let alloc = alloc.into();
+        let mod_name = alloc.alloc_fmt(format_args!("{mod_name}")).into_ref();
+        let module = alloc.alloc(Module::new(mod_name)).into_ref();
+        let _ = lower_to_hir(ast, alloc, module, errs, global_syms, starting_scope);
+        module
+    }
+
+    /// The type of allocator necessary. For single-threaded, we only need a `Bump`.
+    pub type BumpAlloc = Bump;
+
+    /// Make the bump allocator usable for allocation. Useful for combined single/multithreaded use.
+    /// For a single-threaded `Bump`, this is a no-op.
+    pub fn alloc_from_bump(bump: &Bump) -> &Bump {
+        bump
+    }
+}
+
+/// Multi-threaded lowering.
+#[cfg(feature = "rayon")]
+pub mod multi_threaded {
+    use super::*;
+    use rayon::prelude::*;
+
+    /// Lower the code to HIR using multiple threads.
+    pub fn lower_to_hir<
+        'b,
+        F: Clone + Send + Sync,
+        A: ToHir<'b, F> + Send + Sync,
+        E: ErrorReporter<SourcedError<F, HirError<'b, A::Span, F>>> + Copy + Send + Sync,
+    >(
+        ast: &asts::FrolicAST<A, F>,
+        alloc: &'b BumpPool,
+        module: &'b Module<'b, A::Span>,
+        errs: E,
+        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        starting_scope: String,
+    ) -> LowerResult
+    where
+        A::Span: Sync,
+    {
+        let file = ast.file.clone();
+        let mut default = Default::default();
+        let global_syms = global_syms.unwrap_or(&mut default);
+        let report = &|err: HirError<'b, _, F>| {
+            let mut rep = errs;
+            let erred = rep.report(SourcedError {
+                file: file.clone(),
+                error: err,
+            });
+            (!erred).then_some(()).ok_or(EarlyReturn)
+        };
+        let local_alloc = alloc.get();
+        let mut loc = LocalInGlobalContext {
+            global_prefixes: smallvec![local_alloc.alloc_str(&starting_scope).into_ref()],
+            scope_name: starting_scope,
+        };
+        {
+            let mut glb = GlobalPreContext {
+                report,
+                alloc: &local_alloc,
+                module,
+                global_syms,
+                file: ast.file.clone(),
+            };
+            ast.nodes
+                .iter()
+                .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
+        }
+        std::mem::drop(local_alloc); // return this memory asap for the heavy processing
+        {
+            let glb = SyncGlobalContext {
+                report,
+                alloc_tl: ThreadLocal::new(),
+                alloc_pool: alloc,
+                module,
+                global_syms,
+                file: ast.file.clone(),
+            };
+            ast.nodes
+                .par_iter()
+                .try_for_each_init(|| loc.clone(), |loc, a| a.global_sync(&glb, loc))
+        }
+    }
+
+    /// Lower to a new module, returning it.
+    pub fn lower_to_ret_module<
+        'b,
+        F: Clone + Send + Sync,
+        A: ToHir<'b, F> + Send + Sync,
+        E: ErrorReporter<SourcedError<F, HirError<'b, A::Span, F>>> + Copy + Send + Sync,
+    >(
+        ast: &asts::FrolicAST<A, F>,
+        alloc: &'b BumpPool,
+        errs: E,
+        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        mod_name: impl std::fmt::Display,
+        starting_scope: String,
+    ) -> &'b Module<'b, A::Span>
+    where
+        A::Span: Sync + Span,
+    {
+        let alloc_ = alloc.get();
+        let mod_name = alloc_.alloc_fmt(format_args!("{mod_name}")).into_ref();
+        let module = alloc_.alloc(Module::new(mod_name)).into_ref();
+        let _ = lower_to_hir(ast, alloc, module, errs, global_syms, starting_scope);
+        module
+    }
+
+    /// The type of bump allocator necessary. For multithreaded, we need a pool.
+    pub type BumpAlloc = BumpPool;
+
+    /// Make the bump allocator usable for allocation. Useful for combined single/multithreaded use.
+    pub fn alloc_from_bump(bump: &BumpAlloc) -> BumpPoolGuard<'_, AGlobal, 1, true, true> {
+        bump.get()
+    }
 }
 
 #[cfg(feature = "rayon")]
-pub use multi_thread::lower_to_hir;
+pub use multi_threaded::*;
+
 #[cfg(not(feature = "rayon"))]
-pub use single_thread::lower_to_hir;
+pub use single_threaded::*;

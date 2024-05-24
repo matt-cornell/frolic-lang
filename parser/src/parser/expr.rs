@@ -54,39 +54,40 @@ impl<'src, A: Located> LambdaStub<'src, A> {
         }
     }
     /// allows for a more functional solution
-    pub fn into_ast_boxed<D: AstDefs<AstBox<'src> = A>>(body: A, this: Self) -> D::AstBox<'src>
+    pub fn into_ast_boxed<D: AstDefs<'src, AstBox = A>>(body: A, this: Self) -> D::AstBox
     where
-        asts::LambdaAST<'src, A>: Unsize<D::AstTrait<'src>>,
-        A: 'src,
+        asts::LambdaAST<'src, A>: Unsize<D::AstTrait>,
     {
         D::make_box(this.into_ast(body))
     }
 }
 
-impl<'src, A: AstDefs, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
-    A::AstBox<'src>: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::NullAST<S>: Unsize<A::AstTrait<'src>>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait<'src>>,
-    asts::LetAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ParenAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::IfElseAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::CallAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::ShortCircuitAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::FunctionTypeAST<A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
-    asts::LambdaAST<'src, A::AstBox<'src>>: Unsize<A::AstTrait<'src>>,
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
     fn parse_prefix_expr(
         &mut self,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         let start = prefixes.len();
         loop {
             match self.current_token() {
@@ -139,9 +140,9 @@ where
         lvl: u8,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         let start = self.index;
         let (mut ast, ret) = self.parse_level(lvl - 1, necessary, prefixes, infixes, out);
         if ret {
@@ -180,9 +181,9 @@ where
         lvl: u8,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         let start_idx = infixes.len();
         let start = self.index;
         let (mut ast, ret) = self.parse_level(lvl - 1, necessary, prefixes, infixes, out);
@@ -246,9 +247,9 @@ where
         &mut self,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         let start = self.index;
         let (mut ast, ret) = self.parse_level(1, necessary, prefixes, infixes, out);
         if ret {
@@ -287,19 +288,41 @@ where
         &mut self,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
-        self.parse_fns_expr(necessary, prefixes, infixes, out)
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
+        let (val, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+        if err {
+            return (val, true);
+        }
+        match self.current_token() {
+            Some(&Token { kind: TokenKind::Keyword(Keyword::Of), span }) => {
+                self.index += 1;
+                let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+                (A::make_box(asts::AscribeAST {
+                    kw: span,
+                    val, ty,
+                }), err)
+            },
+            Some(&Token { kind: TokenKind::Keyword(Keyword::As), span }) => {
+                self.index += 1;
+                let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
+                (A::make_box(asts::CastAST {
+                    kw: span,
+                    val, ty,
+                }), err)
+            },
+            _ => (val, false)
+        }
     }
 
     fn parse_cond_expr(
         &mut self,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         if let Some(&Token {
             kind: TokenKind::Keyword(Keyword::If),
             span: kw,
@@ -510,9 +533,9 @@ where
         lvl: u8,
         necessary: bool,
         prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox<'src>); 1]>,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         match lvl {
             0 | 1 => self.parse_prefix_expr(necessary, prefixes, out), // 1 might be replaced with indexing
             2 => self.parse_fns_expr(necessary, prefixes, infixes, out),
@@ -527,8 +550,8 @@ where
 
     fn parse_lambda(
         &mut self,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> Option<Result<LambdaStub<'src, A::AstBox<'src>>, ()>> {
+        out: &mut Vec<A::AstBox>,
+    ) -> Option<Result<LambdaStub<'src, A::AstBox>, ()>> {
         let Some(&Token {
             kind: TokenKind::Special(SpecialChar::Backslash),
             span: bs,
@@ -723,8 +746,8 @@ where
         &mut self,
         allow_extra: bool,
         mut necessary: bool,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+        out: &mut Vec<A::AstBox>,
+    ) -> (A::AstBox, bool) {
         let Ok(lambdas) =
             std::iter::from_fn(|| self.parse_lambda(out)).collect::<Result<SmallVec<[_; 3]>, ()>>()
         else {
@@ -754,11 +777,7 @@ where
         )
     }
 
-    fn parse_atom(
-        &mut self,
-        necessary: bool,
-        out: &mut Vec<A::AstBox<'src>>,
-    ) -> (A::AstBox<'src>, bool) {
+    fn parse_atom(&mut self, necessary: bool, out: &mut Vec<A::AstBox>) -> (A::AstBox, bool) {
         self.index += 1;
         match self.input.get(self.index - 1) {
             Some(&Token {
