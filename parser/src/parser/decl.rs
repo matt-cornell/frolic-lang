@@ -26,31 +26,18 @@ where
         if self.eat_comment(out) {
             return (None, true);
         }
-        let global: Option<S> = if let Some(Token {
-            kind: TokenKind::Special(SpecialChar::Dot),
-            span,
-        }) = self.input.get(self.index)
-        {
-            self.index += 1;
-            if self.eat_comment(out) {
-                return (None, true);
-            }
-            Some(*span)
-        } else {
-            None
-        };
         let mut segs = Vec::<(_, S)>::new();
         {
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
-                (Some(seg), true) => return (Some(DottedName::<S>::new(global, vec![seg])), true),
+                (Some(seg), true) => return (Some(DottedName::new(vec![seg])), true),
                 (None, false) => return (None, false),
                 (None, true) => return (None, true),
             }
         }
         loop {
             if self.eat_comment(out) {
-                return (Some(DottedName::<S>::new(global, segs)), true);
+                return (Some(DottedName::new(segs)), true);
             }
             if !matches!(
                 self.input.get(self.index),
@@ -59,17 +46,17 @@ where
                     ..
                 })
             ) {
-                return (Some(DottedName::<S>::new(global, segs)), false);
+                return (Some(DottedName::new(segs)), false);
             }
             self.index += 1;
             if self.eat_comment(out) {
-                return (Some(DottedName::<S>::new(global, segs)), true);
+                return (Some(DottedName::new(segs)), true);
             }
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
                 (seg, ret) => {
                     segs.extend(seg);
-                    return (Some(DottedName::<S>::new(global, segs)), ret);
+                    return (Some(DottedName::new(segs)), ret);
                 }
             }
         }

@@ -37,6 +37,10 @@ pub struct LinkedList<'b, T> {
     last: AtomicRef<'b, T>,
 }
 impl<'b, T> LinkedList<'b, T> {
+    pub const NEW: Self = Self {
+        first: AtomicRef::new(None),
+        last: AtomicRef::new(None),
+    };
     pub fn iter(&self) -> ListIter<'b, T> {
         ListIter {
             inner: self.first.load(Ordering::Relaxed),
@@ -199,6 +203,9 @@ pub trait LinkedListElem<'a>: Sized {
     }
     fn prev(&'a self, ord: Ordering) -> Option<&'a Self> {
         self.get_link().prev.load(ord)
+    }
+    fn parent(&'a self, ord: Ordering) -> Option<&'a Self::Parent> {
+        self.get_link().parent.load(ord)
     }
     fn unlink(&'a self) -> bool {
         let l = self.get_link();

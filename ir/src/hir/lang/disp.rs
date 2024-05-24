@@ -3,22 +3,42 @@ use std::fmt::{self, Display, Formatter};
 
 impl<S> Display for Id<'_, Module<'_, S>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "!{{{:?}:{:0>6x}}}", self.0.name, self.0 as *const _ as usize)
+        write!(
+            f,
+            "!{{{:?}:{:0>6x}}}",
+            self.0.name,
+            self.0 as *const _ as usize & 0xffffff
+        )
     }
 }
 impl<S> Display for Id<'_, Global<'_, S>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "@{{{:?}:{:0>6x}}}", self.0.name, self.0 as *const _ as usize)
+        write!(
+            f,
+            "@{{{}:{:0>6x}}}",
+            self.0.name,
+            self.0 as *const _ as usize & 0xffffff
+        )
     }
 }
 impl<S> Display for Id<'_, Block<'_, S>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "${{{:?}:{:0>6x}}}", self.0.name, self.0 as *const _ as usize)
+        write!(
+            f,
+            "${{{}:{:0>6x}}}",
+            self.0.name,
+            self.0 as *const _ as usize & 0xffffff
+        )
     }
 }
 impl<S> Display for Id<'_, Inst<'_, S>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "%{{{:?}:{:0>6x}}}", self.0.name, self.0 as *const _ as usize)
+        write!(
+            f,
+            "%{{{}:{:0>6x}}}",
+            self.0.name,
+            self.0 as *const _ as usize & 0xffffff
+        )
     }
 }
 
@@ -49,7 +69,11 @@ impl<S> Display for Terminator<'_, S> {
         match self {
             Self::Unreachable => f.write_str("unreachable"),
             Self::Return(v) => write!(f, "return {v}"),
-            Self::CondBr { cond, if_true, if_false } => write!(f, "if {cond} then {if_true} else {if_false}"),
+            Self::CondBr {
+                cond,
+                if_true,
+                if_false,
+            } => write!(f, "if {cond} then {if_true} else {if_false}"),
             Self::UncondBr { blk } => write!(f, "goto {blk}"),
         }
     }
@@ -58,6 +82,8 @@ impl<S> Display for InstKind<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Call { func, arg } => write!(f, "call {func} {arg}"),
+            Self::FnType { arg, ret } => write!(f, "fnty {arg} -> {ret}"),
+            Self::ArgOf { func } => write!(f, "argof {func}"),
             Self::Bind(val) => write!(f, "bind {val}"),
             Self::Cast { val, ty } => write!(f, "cast {val} to {ty}"),
             Self::Ascribe { val, ty } => write!(f, "asc {val} to {ty}"),
@@ -86,12 +112,15 @@ impl<S> Display for Block<'_, S> {
         for i in self.insts.iter() {
             writeln!(f, "  {i}")?;
         }
-        Ok(())
+        writeln!(f, "  {}", self.term.get())
     }
 }
 impl<S> Display for Global<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use std::fmt::Write;
+        if let Some(cap) = self.captures {
+            writeln!(f, "# captures {}", Id(cap))?;
+        }
         if let Some(op) = self.as_alias() {
             writeln!(f, "let {} = {op};", Id(self))
         } else {
@@ -100,14 +129,15 @@ impl<S> Display for Global<'_, S> {
             for blk in self.blocks.iter() {
                 write!(ind, "{blk}")?;
             }
-            writeln!(f, "}}")
+            write!(f, "}}")
         }
     }
 }
 impl<S> Display for Module<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "# module {}", self.name)?;
+        writeln!(f, "# module {}", self.name)?;
         for glb in self.globals.iter() {
+            writeln!(f)?;
             writeln!(f, "{glb}")?;
         }
         Ok(())

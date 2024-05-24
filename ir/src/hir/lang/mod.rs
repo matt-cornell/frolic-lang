@@ -65,18 +65,19 @@ impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
 #[derivative(Debug)]
 pub struct Global<'b, S> {
     pub name: &'b str,
-    pub link: LinkedListLink<'b, Self>,
     #[derivative(Debug(format_with = "ptr_opt"))]
     pub captures: Option<&'b Global<'b, S>>,
     pub is_func: bool,
+    pub span: S,
     pub blocks: LinkedList<'b, Block<'b, S>>,
+    pub link: LinkedListLink<'b, Self>,
 }
 impl<'b, S> Global<'b, S> {
     /// For the case of a global that only returns a value, use this shortcut.
     pub fn as_alias(&self) -> Option<Operand<'b, S>> {
         let mut it = self.blocks.iter();
-        let Some(Block { insts, term, ..}) = it.next() else {
-            return None
+        let Some(Block { insts, term, .. }) = it.next() else {
+            return None;
         };
         it.next().is_none().then_some(())?;
         insts.iter().next().is_none().then_some(())?;
@@ -97,7 +98,7 @@ impl<'b, S> LinkedListParent<'b> for Global<'b, S> {
 }
 impl<'b, S> LinkedListElem<'b> for Global<'b, S> {
     type Parent = Module<'b, S>;
-    
+
     fn get_link(&'b self) -> &'b LinkedListLink<'b, Self> {
         &self.link
     }
@@ -109,6 +110,24 @@ pub struct Block<'b, S> {
     pub term: SyncCell<Terminator<'b, S>>,
     pub insts: LinkedList<'b, Inst<'b, S>>,
     pub link: LinkedListLink<'b, Self>,
+}
+impl<'b, S> Block<'b, S> {
+    pub fn new(name: &'b str) -> Self {
+        Self {
+            name,
+            term: SyncCell::new(Terminator::Unreachable),
+            insts: LinkedList::NEW,
+            link: LinkedListLink::NEW,
+        }
+    }
+    pub fn returning(name: &'b str, ret: Operand<'b, S>) -> Self {
+        Self {
+            name,
+            term: SyncCell::new(Terminator::Return(ret)),
+            insts: LinkedList::NEW,
+            link: LinkedListLink::NEW,
+        }
+    }
 }
 impl<'b, S> NoDrop for Block<'b, S> {}
 impl<'b, S> LinkedListParent<'b> for Block<'b, S> {
@@ -201,8 +220,15 @@ pub enum InstKind<'b, S> {
         func: Operand<'b, S>,
         arg: Operand<'b, S>,
     },
+    /// Create an arrow.
+    FnType {
+        arg: Operand<'b, S>,
+        ret: Operand<'b, S>,
+    },
     /// Transparent, but gives a new name and span.
     Bind(Operand<'b, S>),
+    /// Argument of a function
+    ArgOf { func: GlobalId<'b, S> },
     /// Cast a value to a given type.
     Cast {
         val: Operand<'b, S>,

@@ -54,10 +54,7 @@ impl<'src, A: Located> LambdaStub<'src, A> {
         }
     }
     /// allows for a more functional solution
-    pub fn into_ast_boxed<D: AstDefs<'src, AstBox = A>>(
-        body: A,
-        this: Self,
-    ) -> D::AstBox
+    pub fn into_ast_boxed<D: AstDefs<'src, AstBox = A>>(body: A, this: Self) -> D::AstBox
     where
         asts::LambdaAST<'src, A>: Unsize<D::AstTrait>,
     {
@@ -756,11 +753,7 @@ where
         )
     }
 
-    fn parse_atom(
-        &mut self,
-        necessary: bool,
-        out: &mut Vec<A::AstBox>,
-    ) -> (A::AstBox, bool) {
+    fn parse_atom(&mut self, necessary: bool, out: &mut Vec<A::AstBox>) -> (A::AstBox, bool) {
         self.index += 1;
         match self.input.get(self.index - 1) {
             Some(&Token {

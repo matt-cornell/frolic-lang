@@ -190,7 +190,7 @@ impl Runnable for FrolicDebugHir {
 
         let bump = BumpAlloc::new();
         let ast = parse_tl(&toks, file, &errs, HirAsts::new());
-        let module = lower_to_ret_module(&ast, &bump, &errs, file, "debug_hir".to_string());
+        let module = lower_to_ret_module(&ast, &bump, &errs, None, file, "debug_hir".to_string());
         std::mem::drop(ast);
 
         writeln!(
