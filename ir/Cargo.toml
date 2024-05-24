@@ -7,20 +7,15 @@ repository.workspace = true
 [dependencies]
 atomic_ref = "0.2.1"
 bstr.workspace = true
-bump-scope = "0.4.0"
+bump-scope = "0.5.0"
 derivative.workspace = true
-derive_more = { version = "0.99.17", default-features = false, features = ["deref", "deref_mut", "from", "into", "is_variant", "unwrap", "as_ref", "as_mut", "nightly"] }
-either = "1.11.0"
-flurry = "0.5.1"
+derive_more = { version = "0.99.17", default-features = false, features = ["deref", "deref_mut", "from", "nightly"] }
 frolic-ast.workspace = true
 frolic-utils.workspace = true
 impl-tools.workspace = true
 indenter = "0.3.3"
 miette.workspace = true
-orx-concurrent-vec = "1.7.0"
-parking_lot = { version = "0.12.2", features = ["nightly"] }
 rayon = { version = "1.10.0", optional = true }
-ref-cast = "1.0.23"
 smallvec.workspace = true
 thiserror.workspace = true
 thread_local = { version = "1.1.8", features = ["nightly"] }

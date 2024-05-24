@@ -10,5 +10,4 @@ repository.workspace = true
 boxcar = "0.2.4"
 impl-tools.workspace = true
 miette.workspace = true
-smallvec.workspace = true
 spin = { version = "0.9.8", features = ["spin_mutex"] }

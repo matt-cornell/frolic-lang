@@ -1,7 +1,7 @@
 use crate::common::list::{LinkedList, LinkedListElem, LinkedListLink, LinkedListParent};
 use bump_scope::NoDrop;
 use derivative::Derivative;
-use derive_more::*;
+use derive_more::From;
 use frolic_utils::synccell::SyncCell;
 use std::fmt::{self, Debug, Formatter};
 
