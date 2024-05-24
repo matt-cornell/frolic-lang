@@ -193,7 +193,15 @@ impl Runnable for FrolicDebugHir {
         let module = HirModule::new(file.to_string());
         lower_to_hir(&ast, &errs, &module, None);
 
-        writeln!(stdout, "#= source input:\n{}\n=#", bstr::BStr::new(file.contents()))?;
+        {
+            fmt2io::write(&mut stdout, |writer| {
+                use std::fmt::Write;
+                let mut wrapped_stdout = indenter::indented(writer).with_str("# ");
+                writeln!(wrapped_stdout, "source input:")?;
+                writeln!(wrapped_stdout, "{}", bstr::BStr::new(file.contents()))?;
+                writeln!(wrapped_stdout)
+            })?;
+        }
         write!(stdout, "{module}")?;
 
         errs.into_inner().unwrap().into_result()?;

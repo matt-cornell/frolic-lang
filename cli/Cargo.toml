@@ -10,10 +10,12 @@ repository.workspace = true
 bstr.workspace = true
 clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
+fmt2io = "0.2.0"
 frolic-ast.workspace = true
 frolic-ir.workspace = true
 frolic-parser.workspace = true
 frolic-utils.workspace = true
+indenter = "0.3.3"
 miette = { workspace = true, features = ["fancy"] }
 
 [features]
