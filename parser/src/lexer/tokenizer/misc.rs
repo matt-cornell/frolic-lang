@@ -1,4 +1,5 @@
 use super::*;
+use bstr::ByteSlice;
 
 impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
     fn eat_comment(
@@ -16,7 +17,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         if line_end != start {
             self.index = line_end + 1;
         }
-        let slice = &self.input[start..line_end];
+        let slice = self.input[start..line_end].trim_with(|c| c.is_whitespace());
         if let Some((start, end, kind)) = data {
             if *kind == this {
                 if comment.is_empty() {

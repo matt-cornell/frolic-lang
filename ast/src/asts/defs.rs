@@ -10,9 +10,12 @@ pub struct FnParam<'src, A: Located> {
 }
 
 /// Either a variable or function definition. A variable is just a nullary function at this point.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Derivative, PartialEq)]
+#[derivative(Debug, Clone)]
 pub struct LetAST<'src, A: Located> {
     pub kw: A::Span,
+    #[derivative(Debug(format_with = "bstr_debug"))] 
+    pub doc: Cow<'src, [u8]>,
     pub name: DottedName<'src, A::Span>,
     pub params: SmallVec<[FnParam<'src, A>; 2]>,
     pub ret: Option<A>,

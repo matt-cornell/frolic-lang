@@ -24,6 +24,7 @@ mod groups;
 mod lits;
 mod misc;
 mod op;
+mod types;
 
 const fn const_err<'b, S>() -> Operand<'b, S> {
     Operand::Const(Constant::Error)

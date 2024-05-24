@@ -9,6 +9,7 @@ repository = "https://github.com/matt-cornell/frolic-lang"
 
 [workspace.dependencies]
 bstr = { version = "1.9.1", default-features = false }
+derivative = "2.2.0"
 frolic-ast = { version = "0.0.1", path = "ast" }
 frolic-ir = { version = "0.0.1", path = "ir" }
 frolic-parser = { version = "0.0.1", path = "parser" }
