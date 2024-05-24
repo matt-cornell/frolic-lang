@@ -10,6 +10,7 @@ use frolic_utils::prelude::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use smallvec::{smallvec, SmallVec};
 
 #[cfg(feature = "rayon")]
 use thread_local::ThreadLocal;
@@ -102,12 +103,13 @@ impl<S: Span, F: Clone, A: Allocator + Clone + Sync> Clone for SyncGlobalContext
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct LocalInGlobalContext {
+pub struct LocalInGlobalContext<'b> {
     pub scope_name: String,
+    pub global_prefixes: SmallVec<[&'b str; 1]>,
 }
-impl LocalInGlobalContext {
+impl<'b> LocalInGlobalContext<'b> {
     /// Create and use a temporary local context from this one.
-    pub fn in_local<'b, S, R, F: FnOnce(&mut LocalInLocalContext<'b, S>) -> R>(
+    pub fn in_local<S, R, F: FnOnce(&mut LocalInLocalContext<'b, S>) -> R>(
         &mut self,
         insert: BlockId<'b, S>,
         f: F,
@@ -129,7 +131,7 @@ impl LocalInGlobalContext {
 pub struct LocalInLocalContext<'b, S> {
     #[deref]
     #[deref_mut]
-    pub ctx: LocalInGlobalContext,
+    pub ctx: LocalInGlobalContext<'b>,
     pub locals: Scopes<&'b str, InstId<'b, S>>,
     pub insert: BlockId<'b, S>,
 }
@@ -172,14 +174,14 @@ pub trait ToHir<'b, F: Clone>: Located {
     fn predef_global(
         &self,
         glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
-        loc: &mut LocalInGlobalContext,
+        loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
         Ok(())
     }
     fn global(
         &self,
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
-        loc: &mut LocalInGlobalContext,
+        loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
         (glb.report)(
             HirIce::LocalAstAtGlobal {
@@ -193,7 +195,7 @@ pub trait ToHir<'b, F: Clone>: Located {
     fn global_sync(
         &self,
         glb: &SyncGlobalContext<'_, 'b, Self::Span, F>,
-        loc: &mut LocalInGlobalContext,
+        loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
         self.global(&glb.make_unsync(), loc)
     }
@@ -230,10 +232,11 @@ pub mod single_threaded {
             });
             (!erred).then_some(()).ok_or(EarlyReturn)
         };
+        let alloc = alloc.into();
         let mut loc = LocalInGlobalContext {
+            global_prefixes: smallvec![alloc.alloc_str(&starting_scope).into_ref()],
             scope_name: starting_scope,
         };
-        let alloc = alloc.into();
         {
             let mut glb = GlobalPreContext {
                 report,
@@ -326,15 +329,15 @@ pub mod multi_threaded {
             });
             (!erred).then_some(()).ok_or(EarlyReturn)
         };
-
+        let local_alloc = alloc.get();
         let mut loc = LocalInGlobalContext {
+            global_prefixes: smallvec![local_alloc.alloc_str(&starting_scope).into_ref()],
             scope_name: starting_scope,
         };
         {
-            let alloc = alloc.get();
             let mut glb = GlobalPreContext {
                 report,
-                alloc: &alloc,
+                alloc: &local_alloc,
                 module,
                 global_syms,
                 file: ast.file.clone(),
@@ -343,6 +346,7 @@ pub mod multi_threaded {
                 .iter()
                 .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
         }
+        std::mem::drop(local_alloc); // return this memory asap for the heavy processing
         {
             let glb = SyncGlobalContext {
                 report,

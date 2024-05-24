@@ -1,12 +1,11 @@
 use super::*;
 use std::collections::hash_map::Entry;
-use smallvec::SmallVec;
 
 impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetAST<'src, A> {
     fn predef_global(
         &self,
         glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
-        loc: &mut LocalInGlobalContext,
+        loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
         if self.name.segs.is_empty() {
             return Ok(());
@@ -78,7 +77,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
     fn global(
         &self,
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
-        loc: &mut LocalInGlobalContext,
+        loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
         use std::fmt::Write;
         if self.name.segs.is_empty() {
