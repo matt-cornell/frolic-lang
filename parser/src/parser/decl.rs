@@ -16,6 +16,8 @@ where
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::PreOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::InfOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,

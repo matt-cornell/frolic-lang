@@ -8,6 +8,9 @@ pub struct IfElseAST<A: Located> {
     pub cond: A,
     pub if_true: A,
     pub if_false: A,
+    /// If true, has the form `if_true if cond else if_false`.
+    /// If false, has the form `if cond then if_true else if_false`.
+    pub true_is_prefix: bool,
 }
 
 impl<A: Located> Located for IfElseAST<A> {

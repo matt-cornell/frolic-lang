@@ -76,6 +76,8 @@ where
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::PreOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::InfOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
@@ -123,13 +125,10 @@ where
         }
         let (base, ret) = self.parse_atom(necessary, out);
         let ast = prefixes.drain(start..).rfold(base, |ast, (op, span)| {
-            A::make_box(asts::CallAST {
-                func: A::make_box(asts::VarAST {
-                    name: op.into(),
-                    global: None,
-                    loc: span,
-                }),
-                arg: ast,
+            A::make_box(asts::PreOpAST {
+                op: op.into(),
+                oploc: span,
+                val: ast,
             })
         });
         (ast, ret)
@@ -155,21 +154,21 @@ where
             if self.eat_comment(out) {
                 return (ast, true);
             }
-            let Some(tok) = self.current_token() else {
+            let Some(&Token { ref kind, span }) = self.current_token() else {
                 return (ast, false);
             };
-            if !matches_prec(&tok.kind, lvl) {
+            if !matches_prec(&kind, lvl) {
                 return (ast, false);
             }
-            let func = A::make_box(asts::VarAST {
-                name: tok.kind.inf_op_str().unwrap().into(),
-                global: None,
-                loc: tok.span,
-            });
+            let op = kind.inf_op_str().unwrap().into();
             self.index += 1;
             let (arg, err) = self.parse_level(lvl - 1, true, prefixes, infixes, out);
-            let inter = A::make_box(asts::CallAST { func, arg: ast });
-            ast = A::make_box(asts::CallAST { func: inter, arg });
+            ast = A::make_box(asts::InfOpAST {
+                op,
+                oploc: span,
+                lhs: ast,
+                rhs: arg,
+            });
             if err {
                 return (ast, true);
             }
@@ -228,15 +227,10 @@ where
                     rhs,
                 }),
                 _ => {
-                    let func = A::make_box(asts::VarAST {
-                        name: op.into(),
-                        global: None,
-                        loc,
-                    });
-                    let inter = A::make_box(asts::CallAST { func, arg: lhs });
-                    A::make_box(asts::CallAST {
-                        func: inter,
-                        arg: rhs,
+                    A::make_box(asts::InfOpAST {
+                        op: op.into(),
+                        oploc: loc,
+                        lhs, rhs,
                     })
                 }
             });
@@ -338,6 +332,7 @@ where
                         cond,
                         if_true: A::make_box(asts::ErrorAST { loc }),
                         if_false: A::make_box(asts::ErrorAST { loc }),
+                        true_is_prefix: false,
                     }),
                     true,
                 );
@@ -357,6 +352,7 @@ where
                         cond,
                         if_true: A::make_box(asts::ErrorAST { loc }),
                         if_false: A::make_box(asts::ErrorAST { loc }),
+                        true_is_prefix: false,
                     }),
                     self.report(err),
                 );
@@ -371,6 +367,7 @@ where
                         cond,
                         if_true,
                         if_false: A::make_box(asts::ErrorAST { loc }),
+                        true_is_prefix: false,
                     }),
                     true,
                 );
@@ -390,6 +387,7 @@ where
                         cond,
                         if_true,
                         if_false: A::make_box(asts::ErrorAST { loc }),
+                        true_is_prefix: false,
                     }),
                     self.report(err),
                 );
@@ -402,6 +400,7 @@ where
                     cond,
                     if_true,
                     if_false,
+                    true_is_prefix: false,
                 }),
                 ret,
             );
@@ -429,6 +428,7 @@ where
                         loc: self.curr_loc(),
                     }),
                     cond,
+                    true_is_prefix: true,
                 }),
                 true,
             );
@@ -451,6 +451,7 @@ where
                                     loc: self.curr_loc(),
                                 }),
                                 cond,
+                                true_is_prefix: false,
                             }),
                         }),
                         true,
@@ -474,6 +475,7 @@ where
                                     loc: self.curr_loc(),
                                 }),
                                 cond,
+                                true_is_prefix: false,
                             }),
                         }),
                         self.report(err),
@@ -489,6 +491,7 @@ where
                             if_true,
                             if_false,
                             cond,
+                            true_is_prefix: false,
                         }),
                     }),
                     ret,
@@ -506,6 +509,7 @@ where
                         cond,
                         if_false,
                         if_true: lhs,
+                        true_is_prefix: true,
                     }),
                     ret,
                 )
@@ -520,6 +524,7 @@ where
                             loc: self.curr_loc(),
                         }),
                         cond,
+                        true_is_prefix: true,
                     }),
                     self.report(err),
                 );

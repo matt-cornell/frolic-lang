@@ -135,6 +135,35 @@ pub struct LocalInLocalContext<'b, S> {
     pub locals: Scopes<&'b str, InstId<'b, S>>,
     pub insert: BlockId<'b, S>,
 }
+impl<'b, S: Span> LocalInLocalContext<'b, S> {
+    pub fn lookup<'src: 'b, F>(&self, span: S, name: &Cow<'src, str>, is_global: bool, glb: &GlobalContext<'_, 'b, S, F>) -> (Operand<'b, S>, LowerResult) {
+        use std::fmt::Write;
+        if !is_global {
+            if let Some(&v) = self.locals.lookup(&**name) {
+                return (Operand::Inst(v), Ok(()));
+            }
+            let mut storage = String::new();
+            for pre in self.global_prefixes.iter().rev() {
+                storage.clear();
+                let _ = write!(storage, "{pre}.{name}");
+                if let Some(&(_, v)) = glb.global_syms.get(&*storage) {
+                    return (Operand::Global(v), Ok(()));
+                }
+            }
+        }
+        let name = glb.intern_cow(name);
+        if let Some(&(_, v)) = glb.global_syms.get(name) {
+            return (Operand::Global(v), Ok(()));
+        }
+        (
+            const_err(),
+            (glb.report)(HirError::UnboundVariable {
+                name,
+                span,
+            }),
+        )
+    }
+}
 
 /// Wrapper around `std::any::type_name` that gives a shorter output.
 fn pretty_name<T: ?Sized>() -> &'static str {

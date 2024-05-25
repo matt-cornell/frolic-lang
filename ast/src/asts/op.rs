@@ -1,5 +1,34 @@
 use super::*;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreOpAST<'src, A: Located> {
+    pub oploc: A::Span,
+    pub op: Cow<'src, str>,
+    pub val: A,
+}
+impl<A: Located> Located for PreOpAST<'_, A> {
+    type Span = A::Span;
+
+    fn loc(&self) -> Self::Span {
+        self.oploc.merge(self.val.loc())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct InfOpAST<'src, A: Located> {
+    pub oploc: A::Span,
+    pub op: Cow<'src, str>,
+    pub lhs: A,
+    pub rhs: A,
+}
+impl<A: Located> Located for InfOpAST<'_, A> {
+    type Span = A::Span;
+
+    fn loc(&self) -> Self::Span {
+        self.lhs.loc().merge(self.rhs.loc())
+    }
+}
+
 /// Short-circuiting operations *can't* be implemented as function calls because that would require
 /// that
 #[derive(Debug, Clone, PartialEq)]
