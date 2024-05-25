@@ -12,13 +12,18 @@ clap = { version = "4.5.4", features = ["derive"] }
 eyre = "0.6.12"
 fmt2io = "0.2.0"
 frolic-ast.workspace = true
+frolic-fmt = { version = "0.0.1", path = "../fmt", optional = true }
 frolic-ir.workspace = true
 frolic-parser.workspace = true
 frolic-utils.workspace = true
 indenter = "0.3.3"
 miette = { workspace = true, features = ["fancy"] }
+serde_json = { version = "1.0.116", optional = true }
+supports-color = { version = "3.0.0", optional = true }
 
 [features]
-default = ["rayon"]
+default = ["rayon", "fmt", "serde"]
 
 rayon = ["frolic-parser/rayon", "frolic-ir/rayon"]
+fmt = ["frolic-fmt", "supports-color"]
+serde = ["serde_json", "frolic-fmt?/serde"]

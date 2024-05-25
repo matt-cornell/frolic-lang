@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub mod debug;
+pub mod fmt;
 
 frolic_parser::def_box_asts!(pub struct HirAsts<'b, S, F> = 'src : 'b -> dyn ToHir<'b, F, Span = S> + Send + Sync + 'b where S: Span + 'static, F: Copy + 'static);
 
@@ -38,6 +39,9 @@ pub enum FrolicCli {
     #[cfg_attr(debug_assertions, command(subcommand))]
     #[cfg_attr(not(debug_assertions), command(skip))]
     Debug(debug::FrolicDebug),
+    /// Color a file, with a theme.
+    #[cfg(feature = "fmt")]
+    Color(fmt::FrolicColor),
 }
 impl Runnable for FrolicCli {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -48,6 +52,7 @@ impl Runnable for FrolicCli {
     ) -> eyre::Result<()> {
         match self {
             Self::Debug(cmd) => cmd.run(stdin, stdout, stderr),
+            Self::Color(cmd) => cmd.run(stdin, stdout, stderr),
         }
     }
 }

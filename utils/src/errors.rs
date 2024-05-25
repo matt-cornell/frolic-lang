@@ -260,3 +260,11 @@ impl<W: std::io::Write, H: miette::ReportHandler, E: Diagnostic> ErrorReporter<E
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct SilentReporter;
+impl<E> ErrorReporter<E> for SilentReporter {
+    fn report(&mut self, _err: E) -> bool {
+        false
+    }
+}
