@@ -1,31 +1,32 @@
 use super::*;
 use std::fmt::{self, Display, Formatter, Write};
 use std::ops::Deref;
+use vec1::smallvec_v1::*;
 
 /// A `DottedName` represents a specifier for a global variable.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DottedName<
     'src,
     S,
-    V: Deref<Target = [(Cow<'src, str>, S)]> = SmallVec<[(Cow<'src, str>, S); 1]>,
+    V: Deref<Target = [(Cow<'src, str>, S)]> = SmallVec1<[(Cow<'src, str>, S); 1]>,
 > {
     /// The segments, as tuples of segments and their spans. Should not be empty!
     pub segs: V,
 }
-impl<'src, S, const N: usize> DottedName<'src, S, SmallVec<[(Cow<'src, str>, S); N]>> {
+impl<'src, S, const N: usize> DottedName<'src, S, SmallVec1<[(Cow<'src, str>, S); N]>> {
     /// Construct a new `DottedName`. This generic signature allows for string-span pairs
     /// to be used as iterator items for the segments rather than `Cow`s.
     pub fn new<O: Into<Cow<'src, str>>, I: IntoIterator<Item = (O, S)>>(segs: I) -> Self {
+        let segs: SmallVec<[(Cow<'src, str>, S); N]> = segs.into_iter().map(|(n, s)| (n.into(), s)).collect();
         let this = Self {
-            segs: segs.into_iter().map(|(n, s)| (n.into(), s)).collect(),
+            segs: segs.try_into().expect("DottedName input should not be empty!"),
         };
-        debug_assert!(!this.segs.is_empty());
         this
     }
     /// Convenience function to create a local name.
-    pub fn local<O: Into<Cow<'src, str>>, T: Into<S>>(name: O, span: T) -> Self {
+    pub fn local<O: Into<Cow<'src, str>>>(name: O, span: S) -> Self {
         Self {
-            segs: smallvec![(name.into(), span.into())],
+            segs: smallvec1![(name.into(), span)],
         }
     }
 }

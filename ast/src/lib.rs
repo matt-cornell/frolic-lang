@@ -2,7 +2,7 @@ pub mod asts;
 pub mod dottedname;
 
 use frolic_utils::prelude::*;
-use smallvec::{smallvec, SmallVec};
+use smallvec::SmallVec;
 use std::borrow::Cow;
 
 pub mod prelude {

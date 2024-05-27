@@ -1,5 +1,5 @@
 use super::*;
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 
 impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
@@ -13,6 +13,9 @@ where
     asts::NullAST<S>: Unsize<A::AstTrait>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait>,
     asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
@@ -29,11 +32,11 @@ where
         if self.eat_comment(out) {
             return (None, true);
         }
-        let mut segs = Vec::<(_, S)>::new();
+        let mut segs = SmallVec::<[(_, S); 2]>::new();
         {
             match self.parse_ident(true, out) {
                 (Some(seg), false) => segs.push(seg),
-                (Some(seg), true) => return (Some(DottedName::new(vec![seg])), true),
+                (Some(seg), true) => return (Some(DottedName::new([seg])), true),
                 (None, false) => return (None, false),
                 (None, true) => return (None, true),
             }
@@ -91,12 +94,13 @@ where
 
     pub fn parse_let_decl(
         &mut self,
+        global: bool,
         out: &mut Vec<A::AstBox>,
     ) -> (Option<asts::LetAST<'src, A::AstBox>>, bool) {
         let doc = self.get_docs();
         let kw = self.input[self.index].span;
         self.index += 1;
-        let name = {
+        let name = if global {
             match self.parse_dottedname(out) {
                 (Some(n), false) => n,
                 (Some(name), true) => {
@@ -105,6 +109,26 @@ where
                             kw,
                             doc,
                             name,
+                            params: smallvec![],
+                            ret: None,
+                            body: A::make_box(asts::ErrorAST {
+                                loc: self.curr_loc(),
+                            }),
+                        }),
+                        true,
+                    )
+                }
+                (None, ret) => return (None, ret),
+            }
+        } else {
+            match self.parse_ident(true, out) {
+                (Some((name, span)), false) => DottedName::local(name, span),
+                (Some((name, span)), true) => {
+                    return (
+                        Some(asts::LetAST {
+                            kw,
+                            doc,
+                            name: DottedName::local(name, span),
                             params: smallvec![],
                             ret: None,
                             body: A::make_box(asts::ErrorAST {
@@ -396,7 +420,7 @@ where
             None
         };
         if !matches!(
-            self.input.get(self.index),
+            self.current_token(),
             Some(Token {
                 kind: TokenKind::Special(SpecialChar::Equals),
                 ..
@@ -404,19 +428,27 @@ where
         ) {
             let loc = self.curr_loc();
             let err = self.exp_found("value for let-binding");
-            return (
-                Some(asts::LetAST {
-                    kw,
-                    doc,
-                    name,
-                    params,
-                    ret,
-                    body: A::make_box(asts::ErrorAST { loc }),
-                }),
-                self.report(err),
-            );
+            if self.report(err) {
+                return (
+                    Some(asts::LetAST {
+                        kw,
+                        doc,
+                        name,
+                        params,
+                        ret,
+                        body: A::make_box(asts::ErrorAST { loc }),
+                    }),
+                    true,
+                );
+            }
+            if let Some(skip) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Equals)) {
+                self.index += skip;
+            } else {
+                self.index = self.input.len();
+            }
+        } else {
+            self.index += 1;
         }
-        self.index += 1;
         let (body, err) = self.parse_expr(true, true, out);
         (
             Some(asts::LetAST {

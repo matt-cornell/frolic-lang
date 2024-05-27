@@ -28,6 +28,9 @@ where
     asts::NullAST<S>: Unsize<A::AstTrait>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait>,
     asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
@@ -250,7 +253,7 @@ where
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
                 TokenKind::Keyword(Keyword::Let) => {
-                    let (res, ret) = self.parse_let_decl(&mut out);
+                    let (res, ret) = self.parse_let_decl(true, &mut out);
                     if ret {
                         return (out, true);
                     }
@@ -331,6 +334,9 @@ where
     asts::NullAST<S>: Unsize<A::AstTrait>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait>,
     asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
@@ -365,6 +371,9 @@ where
     asts::NullAST<S>: Unsize<A::AstTrait>,
     asts::VarAST<'src, S>: Unsize<A::AstTrait>,
     asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,

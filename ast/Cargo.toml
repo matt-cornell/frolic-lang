@@ -11,3 +11,4 @@ bstr.workspace = true
 derivative.workspace = true
 frolic-utils.workspace = true
 smallvec.workspace = true
+vec1.workspace = true

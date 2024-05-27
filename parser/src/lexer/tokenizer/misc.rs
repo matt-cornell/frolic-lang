@@ -172,9 +172,13 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             .last();
         self.index = idx;
         let ident = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
-        self.tokens.push(Token {
-            kind: TokenKind::from_ident(ident),
-            span: S::range(start + self.offset, self.index + self.offset),
-        });
+        if ident == "let" {
+            self.parse_let_op();
+        } else {
+            self.tokens.push(Token {
+                kind: TokenKind::from_ident(ident),
+                span: S::range(start + self.offset, self.index + self.offset),
+            });
+        }
     }
 }

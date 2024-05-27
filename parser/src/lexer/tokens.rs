@@ -122,6 +122,7 @@ pub enum TokenKind<'src> {
     /// sequences.
     String(#[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>),
     Special(SpecialChar),
+    LetOp(&'src str),
     PreOp(&'src str),
     InfOp(&'src str),
     AmbigOp(AmbigOp),

@@ -160,7 +160,7 @@ pub trait ToHir<'b, F: Clone>: Located {
     ) -> (Operand<'b, Self::Span>, LowerResult) {
         println!("bt: {}", std::backtrace::Backtrace::capture());
         (
-            Operand::Const(Constant::Error),
+            const_err(),
             (glb.report)(
                 HirIce::GlobalAstAtLocal {
                     kind: pretty_name::<Self>(),

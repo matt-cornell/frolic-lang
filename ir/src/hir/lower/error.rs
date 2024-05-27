@@ -6,14 +6,19 @@ use thiserror::Error;
 /// Internal errors, shouldn't ever be constructed through normal program usage.
 #[derive(Debug, Clone, Copy, PartialEq, Error, Diagnostic)]
 pub enum HirIce<'b, S: Span> {
+    #[error("ICE: TODO: {message}")]
+    Todo { message: &'static str, #[label] span: S },
     #[error("ICE: global AST `{kind}` at local scope")]
-    GlobalAstAtLocal { kind: &'static str, span: S },
+    GlobalAstAtLocal { kind: &'static str, #[label] span: S },
     #[error("ICE: local AST `{kind}` at global scope")]
-    LocalAstAtGlobal { kind: &'static str, span: S },
+    LocalAstAtGlobal { kind: &'static str, #[label] span: S },
     #[error("ICE: empty variable name")]
-    EmptyVarName { span: S },
+    EmptyVarName { #[label] span: S },
     #[error("ICE: couldn't find global `{name}` in symbol table")]
-    CouldntFindInTable { name: &'b str, span: S },
+    CouldntFindInTable { name: &'b str, #[label] span: S },
+    // internal error because we should be catching this at parsing.
+    #[error("ICE: invalid local name: {name:?}")]
+    InvalidLocalName { name: &'b str, #[label] span: S },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
