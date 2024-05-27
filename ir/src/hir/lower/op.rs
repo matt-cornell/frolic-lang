@@ -18,12 +18,15 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::PreOpAST<'s
             return (const_err(), erred);
         }
         let (val, erred) = self.val.local(glb, loc);
-        let inst = glb.alloc.alloc(Inst {
-            name: "",
-            span: self.loc(),
-            kind: InstKind::Call { func, arg: val },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.loc(),
+                kind: InstKind::Call { func, arg: val },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst);
         (Operand::Inst(Id(inst)), erred)
     }
@@ -40,20 +43,33 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::InfOpAST<'s
         }
         let (lhs, erred) = self.lhs.local(glb, loc);
         let span = self.loc();
-        let inst1 = glb.alloc.alloc(Inst {
-            name: "",
-            span,
-            kind: InstKind::Call { func, arg: lhs },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let inst1 = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span,
+                kind: InstKind::Call { func, arg: lhs },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst1);
-        let (rhs, erred) = if erred.is_err() { (const_err(), erred) } else { self.rhs.local(glb, loc) };
-        let inst2 = glb.alloc.alloc(Inst {
-            name: "",
-            span,
-            kind: InstKind::Call { func: Operand::Inst(Id(inst1)), arg: rhs },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let (rhs, erred) = if erred.is_err() {
+            (const_err(), erred)
+        } else {
+            self.rhs.local(glb, loc)
+        };
+        let inst2 = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span,
+                kind: InstKind::Call {
+                    func: Operand::Inst(Id(inst1)),
+                    arg: rhs,
+                },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst2);
         (Operand::Inst(Id(inst2)), erred)
     }

@@ -5,9 +5,11 @@ edition.workspace = true
 repository.workspace = true
 
 [dependencies]
+bstr.workspace = true
 frolic-ast = { version = "0.0.1", path = "../ast" }
 frolic-parser = { version = "0.0.1", path = "../parser" }
 frolic-utils = { version = "0.0.1", path = "../utils" }
+impl-tools.workspace = true
 owo-colors = "4.0.0"
 serde = { version = "1.0.198", optional = true, features = ["derive"] }
 

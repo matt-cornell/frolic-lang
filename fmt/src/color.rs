@@ -344,7 +344,7 @@ fn fmt_impl<C: Colorer>(code: &str, theme: &Theme<C>, f: &mut Formatter<'_>) -> 
         theme.default.write(&code[last..span.offset], f)?;
         last = span.offset + span.len;
         let color = match kind {
-            TokenKind::Int(_) | TokenKind::Float(_) => &theme.num,
+            TokenKind::Int(..) | TokenKind::Float(_) => &theme.num,
             TokenKind::String(_) => &theme.string,
             TokenKind::Char(_) => &theme.char,
             TokenKind::Comment(_, CommentKind::Ignore) => &theme.ign,

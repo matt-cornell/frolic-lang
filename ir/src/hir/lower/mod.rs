@@ -7,10 +7,10 @@ use derivative::Derivative;
 use derive_more::{Deref, DerefMut};
 use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use smallvec::{smallvec, SmallVec};
 
 #[cfg(feature = "rayon")]
 use thread_local::ThreadLocal;
@@ -136,7 +136,13 @@ pub struct LocalInLocalContext<'b, S> {
     pub insert: BlockId<'b, S>,
 }
 impl<'b, S: Span> LocalInLocalContext<'b, S> {
-    pub fn lookup<'src: 'b, F>(&self, span: S, name: &Cow<'src, str>, is_global: bool, glb: &GlobalContext<'_, 'b, S, F>) -> (Operand<'b, S>, LowerResult) {
+    pub fn lookup<'src: 'b, F>(
+        &self,
+        span: S,
+        name: &Cow<'src, str>,
+        is_global: bool,
+        glb: &GlobalContext<'_, 'b, S, F>,
+    ) -> (Operand<'b, S>, LowerResult) {
         use std::fmt::Write;
         if !is_global {
             if let Some(&v) = self.locals.lookup(&**name) {
@@ -157,10 +163,7 @@ impl<'b, S: Span> LocalInLocalContext<'b, S> {
         }
         (
             const_err(),
-            (glb.report)(HirError::UnboundVariable {
-                name,
-                span,
-            }),
+            (glb.report)(HirError::UnboundVariable { name, span }),
         )
     }
 }

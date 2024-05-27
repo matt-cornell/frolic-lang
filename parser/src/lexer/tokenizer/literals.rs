@@ -12,7 +12,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         loop {
             let Some(&c) = self.input.get(self.index) else {
                 self.tokens.push(Token {
-                    kind: TokenKind::Int(int * mul),
+                    kind: TokenKind::Int(int * mul, kind as u8),
                     span: S::range(self.offset + start, self.offset + self.index),
                 });
                 return false;
@@ -45,7 +45,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 _ => {
                     self.index -= 1;
                     self.tokens.push(Token {
-                        kind: TokenKind::Int(int * mul),
+                        kind: TokenKind::Int(int * mul, kind as u8),
                         span: S::range(self.offset + start, self.offset + self.index),
                     });
                     return false;
@@ -88,7 +88,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 Some(b'0'..=b'9') => self.parse_num_impl(start, LitKind::Decimal, neg),
                 _ => {
                     self.tokens.push(Token {
-                        kind: TokenKind::Int(0),
+                        kind: TokenKind::Int(0, 10),
                         span: S::new(self.offset + start, 1),
                     });
                     false

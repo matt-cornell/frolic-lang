@@ -226,13 +226,12 @@ where
                     lhs,
                     rhs,
                 }),
-                _ => {
-                    A::make_box(asts::InfOpAST {
-                        op: op.into(),
-                        oploc: loc,
-                        lhs, rhs,
-                    })
-                }
+                _ => A::make_box(asts::InfOpAST {
+                    op: op.into(),
+                    oploc: loc,
+                    lhs,
+                    rhs,
+                }),
             });
         (ast, err)
     }
@@ -290,23 +289,23 @@ where
             return (val, true);
         }
         match self.current_token() {
-            Some(&Token { kind: TokenKind::Keyword(Keyword::Of), span }) => {
+            Some(&Token {
+                kind: TokenKind::Keyword(Keyword::Of),
+                span,
+            }) => {
                 self.index += 1;
                 let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
-                (A::make_box(asts::AscribeAST {
-                    kw: span,
-                    val, ty,
-                }), err)
-            },
-            Some(&Token { kind: TokenKind::Keyword(Keyword::As), span }) => {
+                (A::make_box(asts::AscribeAST { kw: span, val, ty }), err)
+            }
+            Some(&Token {
+                kind: TokenKind::Keyword(Keyword::As),
+                span,
+            }) => {
                 self.index += 1;
                 let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
-                (A::make_box(asts::CastAST {
-                    kw: span,
-                    val, ty,
-                }), err)
-            },
-            _ => (val, false)
+                (A::make_box(asts::CastAST { kw: span, val, ty }), err)
+            }
+            _ => (val, false),
         }
     }
 
@@ -704,37 +703,47 @@ where
         if self.eat_comment(out) {
             return Some(Err(()));
         }
-        let retty = if let Some(Token {
-            kind: TokenKind::Keyword(Keyword::Of),
-            ..
-        }) = self.input.get(self.index)
-        {
-            self.index += 1;
-            let (res, ret) = self.parse_expr(true, true, out);
-            if ret {
-                return Some(Err(()));
+        let retty = match self.current_token() {
+            Some(Token {
+                kind: TokenKind::Keyword(Keyword::Of),
+                ..
+            }) => {
+                self.index += 1;
+                let (res, ret) = self.parse_expr(true, true, out);
+                if ret {
+                    return Some(Err(()));
+                }
+                Some(res)
             }
-            Some(res)
-        } else {
-            None
+            Some(Token {
+                kind: TokenKind::Special(SpecialChar::Backslash),
+                ..
+            }) => {
+                return Some(Ok(LambdaStub {
+                    bs,
+                    arg,
+                    aloc,
+                    argty,
+                    retty: None,
+                }))
+            }
+            _ => None,
         };
         if self.eat_comment(out) {
             return Some(Err(()));
         }
-        match self.current_token() {
+        if matches!(
+            self.current_token(),
             Some(Token {
                 kind: TokenKind::Special(SpecialChar::Arrow),
                 ..
-            }) => self.index += 1,
-            Some(Token {
-                kind: TokenKind::Special(SpecialChar::Backslash),
-                ..
-            }) => {}
-            _ => {
-                let err = self.exp_found("lambda arrow");
-                if self.report(err) {
-                    return Some(Err(()));
-                }
+            })
+        ) {
+            self.index += 1;
+        } else {
+            let err = self.exp_found("lambda arrow");
+            if self.report(err) {
+                return Some(Err(()));
             }
         }
         Some(Ok(LambdaStub {
@@ -813,13 +822,36 @@ where
                 false,
             ),
             Some(&Token {
-                kind: TokenKind::Int(val),
+                kind: TokenKind::Int(val, base),
                 span,
-            }) => (A::make_box(asts::IntLitAST { val, loc: span }), false),
+            }) => (
+                A::make_box(asts::IntLitAST {
+                    val,
+                    loc: span,
+                    kind: match base {
+                        2 => asts::IntLitKind::Bin,
+                        8 => asts::IntLitKind::Oct,
+                        16 => asts::IntLitKind::Hex,
+                        _ => asts::IntLitKind::Dec,
+                    },
+                }),
+                false,
+            ),
             Some(&Token {
                 kind: TokenKind::Float(val),
                 span,
             }) => (A::make_box(asts::FloatLitAST { val, loc: span }), false),
+            Some(&Token {
+                kind: TokenKind::Char(val),
+                span,
+            }) => (
+                A::make_box(asts::IntLitAST {
+                    val: val as _,
+                    loc: span,
+                    kind: asts::IntLitKind::Char,
+                }),
+                false,
+            ),
             Some(&Token {
                 kind: TokenKind::String(ref val),
                 span,

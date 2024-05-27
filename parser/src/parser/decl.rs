@@ -73,7 +73,7 @@ where
         while let Some(idx) = index.checked_sub(1) {
             index = idx;
             match self.input[idx].kind {
-                TokenKind::Comment(_, CommentKind::Ignore) => {},
+                TokenKind::Comment(_, CommentKind::Ignore) => {}
                 TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
                     if !comm.is_empty() {
                         if out.is_empty() {
