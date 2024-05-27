@@ -41,7 +41,7 @@ impl<T> SyncCell<T> {
         SyncRef {
             lock: &self.lock,
             raw: self.val.as_ptr() as *mut (),
-            map: unsafe { std::mem::transmute(map) }, // function parameters and return have same layout
+            map: unsafe { std::mem::transmute::<fn(&'a mut T) -> &'a mut U, unsafe fn(*mut ()) -> *mut U>(map) }, // function parameters and return have same layout
         }
     }
 }

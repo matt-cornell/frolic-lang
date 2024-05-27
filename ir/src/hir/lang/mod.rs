@@ -20,8 +20,6 @@ fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
 #[derive(Derivative, From)]
 #[derivative(
     Debug(bound = ""),
-    Clone(bound = ""),
-    Copy(bound = ""),
     PartialEq(bound = ""),
     Eq(bound = ""),
     Hash(bound = "")
@@ -34,6 +32,12 @@ pub struct Id<'b, T>(
     )]
     pub &'b T,
 );
+impl<T> Clone for Id<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<T> Copy for Id<'_, T> {}
 pub type ModuleId<'b, S> = Id<'b, Module<'b, S>>;
 pub type GlobalId<'b, S> = Id<'b, Global<'b, S>>;
 pub type BlockId<'b, S> = Id<'b, Block<'b, S>>;
@@ -76,9 +80,7 @@ impl<'b, S> Global<'b, S> {
     /// For the case of a global that only returns a value, use this shortcut.
     pub fn as_alias(&self) -> Option<Operand<'b, S>> {
         let mut it = self.blocks.iter();
-        let Some(Block { insts, term, .. }) = it.next() else {
-            return None;
-        };
+        let Block { insts, term, .. } = it.next()?;
         it.next().is_none().then_some(())?;
         insts.iter().next().is_none().then_some(())?;
         if let Terminator::Return(op) = term.get() {
@@ -175,8 +177,6 @@ pub enum Constant<'b> {
 #[derive(Derivative, Default)]
 #[derivative(
     Debug(bound = ""),
-    Clone(bound = ""),
-    Copy(bound = ""),
     PartialEq(bound = "")
 )]
 pub enum Terminator<'b, S> {
@@ -192,12 +192,16 @@ pub enum Terminator<'b, S> {
         blk: BlockId<'b, S>,
     },
 }
+impl<S> Clone for Terminator<'_, S> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<S> Copy for Terminator<'_, S> {}
 
 #[derive(Derivative)]
 #[derivative(
     Debug(bound = ""),
-    Clone(bound = ""),
-    Copy(bound = ""),
     PartialEq(bound = "")
 )]
 pub enum Operand<'b, S> {
@@ -205,13 +209,17 @@ pub enum Operand<'b, S> {
     Inst(InstId<'b, S>),
     Global(GlobalId<'b, S>),
 }
+impl<S> Clone for Operand<'_, S> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<S> Copy for Operand<'_, S> {}
 
 /// A kind of instruction.
 #[derive(Derivative)]
 #[derivative(
     Debug(bound = ""),
-    Clone(bound = ""),
-    Copy(bound = ""),
     PartialEq(bound = "")
 )]
 pub enum InstKind<'b, S> {
@@ -242,3 +250,9 @@ pub enum InstKind<'b, S> {
     /// Get value based on the predecessor.
     Phi(&'b [(BlockId<'b, S>, Operand<'b, S>)]),
 }
+impl<S> Clone for InstKind<'_, S> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<S> Copy for InstKind<'_, S> {}

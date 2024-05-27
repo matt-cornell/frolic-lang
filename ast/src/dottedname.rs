@@ -18,10 +18,9 @@ impl<'src, S, const N: usize> DottedName<'src, S, SmallVec1<[(Cow<'src, str>, S)
     /// to be used as iterator items for the segments rather than `Cow`s.
     pub fn new<O: Into<Cow<'src, str>>, I: IntoIterator<Item = (O, S)>>(segs: I) -> Self {
         let segs: SmallVec<[(Cow<'src, str>, S); N]> = segs.into_iter().map(|(n, s)| (n.into(), s)).collect();
-        let this = Self {
+        Self {
             segs: segs.try_into().expect("DottedName input should not be empty!"),
-        };
-        this
+        }
     }
     /// Convenience function to create a local name.
     pub fn local<O: Into<Cow<'src, str>>>(name: O, span: S) -> Self {

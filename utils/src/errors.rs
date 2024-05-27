@@ -153,7 +153,7 @@ impl<E, F: Fn(E) -> bool> ErrorReporter<E> for &CallbackReporter<F> {
 }
 
 /// Get the first error, exit immediately.
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct OnceReporter<E> {
     lock: OnceLock<E>,
 }

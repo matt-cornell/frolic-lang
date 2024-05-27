@@ -78,11 +78,11 @@ where
                 TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
                     if !comm.is_empty() {
                         if out.is_empty() {
-                            out = comm.clone();
+                            out.clone_from(comm);
                         } else {
                             let r = out.to_mut();
                             r.push(b'\n');
-                            r.extend_from_slice(&comm);
+                            r.extend_from_slice(comm);
                         }
                     }
                 }

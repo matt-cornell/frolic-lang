@@ -55,6 +55,7 @@ macro_rules! trait_alias {
 macro_rules! def_box_asts {
     ($pub:vis struct $name:ident = $lt:lifetime $(: $ltb:lifetime)? -> $traits:ty) => {
         $pub struct $name;
+        #[allow(clippy::new_without_default)]
         impl $name {
             pub const fn new() -> Self {
                 Self
@@ -70,6 +71,7 @@ macro_rules! def_box_asts {
     };
     ($pub:vis struct $name:ident<$($lts:lifetime),+> = $lt:lifetime $(: $ltb:lifetime)? -> $traits:ty $(where $($res:tt)*)?) => {
         $pub struct $name<$($lts,)*>(std::marker::PhantomData<($(fn() -> &$gens (),)*)>) $(where $($res)*)?;
+        #[allow(clippy::new_without_default)]
         impl<$($lts,)*> $name<$($lts,)*> $(where $($res)*)? {
             pub const fn new() -> Self {
                 Self(std::marker::PhantomData)
@@ -85,6 +87,7 @@ macro_rules! def_box_asts {
     };
     ($pub:vis struct $name:ident<$($lts:lifetime,)* $($gens:ident),* $(,)?> = $lt:lifetime $(: $ltb:lifetime)? -> $traits:ty $(where $($res:tt)*)?) => {
         $pub struct $name<$($lts,)* $($gens,)*>(std::marker::PhantomData<($(fn() -> &$lts (),)* $($gens,)*)>) $(where $($res)*)?;
+        #[allow(clippy::new_without_default)]
         impl<$($lts,)* $($gens,)*> $name<$($lts,)* $($gens,)*> $(where $($res)*)? {
             pub const fn new() -> Self {
                 Self(std::marker::PhantomData)

@@ -9,7 +9,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
     ) -> (Operand<'b, Self::Span>, LowerResult) {
         let [(ref self_name, nloc)] = self.name.segs[..] else {
             return (const_err(), (glb.report)(HirIce::InvalidLocalName {
-                name: glb.alloc.alloc_fmt(format_args!("{}", self.name.to_string())).into_ref(),
+                name: glb.alloc.alloc_fmt(format_args!("{}", self.name)).into_ref(),
                 span: self.name.loc(),
             }.into()))
         };
@@ -131,8 +131,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                         span,
                                         file: file.clone(),
                                     },
-                                }
-                                .into(),
+                                },
                             )?;
                         }
                     }

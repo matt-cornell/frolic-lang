@@ -1,3 +1,5 @@
+#![allow(clippy::type_complexity)]
+
 use super::lang::*;
 use crate::common::list::*;
 use crate::common::symbols::Scopes;
@@ -53,6 +55,7 @@ pub struct GlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> {
     pub file: F,
 }
 impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalContext<'g, 'b, S, F, A> {
+    #[allow(clippy::ptr_arg)]
     pub fn intern_cow<'src: 'b>(&self, cow: &Cow<'src, str>) -> &'b str {
         match cow {
             Cow::Borrowed(s) => s,
@@ -254,7 +257,7 @@ pub mod single_threaded {
                 report,
                 alloc,
                 module,
-                global_syms: &global_syms,
+                global_syms,
                 file: ast.file.clone(),
             };
             ast.nodes.iter().try_for_each(|a| a.global(&glb, &mut loc))

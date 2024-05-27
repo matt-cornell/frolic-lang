@@ -37,6 +37,7 @@ pub struct LinkedList<'b, T> {
     last: AtomicRef<'b, T>,
 }
 impl<'b, T> LinkedList<'b, T> {
+    #[allow(clippy::declare_interior_mutable_const)]
     pub const NEW: Self = Self {
         first: AtomicRef::new(None),
         last: AtomicRef::new(None),
@@ -71,6 +72,7 @@ pub struct LinkedListLink<'b, S: LinkedListElem<'b>> {
 }
 impl<'b, S: LinkedListElem<'b>> LinkedListLink<'b, S> {
     /// A constant, unlinked link.
+    #[allow(clippy::declare_interior_mutable_const)]
     pub const NEW: Self = Self {
         parent: AtomicRef::new(None),
         next: AtomicRef::new(None),
