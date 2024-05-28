@@ -178,7 +178,7 @@ where
                 }
                 let (id, mspan) = match self.current_token() {
                     Some(&Token {
-                        kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::Ident(op),
+                        kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::LetOp(op) | TokenKind::Ident(op),
                         span,
                     }) => (op, span),
                     Some(&Token {

@@ -281,17 +281,82 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
     fn local(
         &self,
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
-        _loc: &mut LocalInLocalContext<'b, Self::Span>,
+        loc: &mut LocalInLocalContext<'b, Self::Span>,
     ) -> (Operand<'b, Self::Span>, LowerResult) {
-        (
-            const_err(),
-            (glb.report)(
-                HirIce::Todo {
-                    message: "semantics for custom `let` operators haven't been decided yet",
-                    span: self.loc(),
+        use std::fmt::Write;
+        let old_len = loc.scope_name.len();
+        let _ = write!(loc.scope_name, ".{}", self.name);
+        let (val, erred) = self.body.local(glb, loc);
+        if erred.is_err() {
+            loc.scope_name.truncate(old_len);
+            return (const_err(), erred);
+        }
+        let _ = write!(loc.scope_name, ".#cont");
+        let cont = glb.alloc.alloc(Global {
+            name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+            span: self.nloc,
+            is_func: true,
+            captures: loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed),
+            blocks: LinkedList::NEW,
+            link: LinkedListLink::NEW,
+        }).into_ref();
+        glb.module.push_back(cont);
+        let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+        cont.push_back(blk);
+        let old_blk = std::mem::replace(&mut loc.insert, Id(blk));
+        let arg_name = glb.intern_cow(&self.name);
+        let inst = glb.alloc.alloc(Inst {
+            name: arg_name,
+            span: self.nloc,
+            kind: InstKind::ArgOf { func: Id(cont) },
+            link: LinkedListLink::NEW,
+        }).into_ref();
+        blk.push_back(inst);
+        loc.locals.push_new_scope();
+        loc.locals.insert(arg_name, Id(inst));
+        let (ret, erred) = self.cont.local(glb, loc);
+        loc.insert.0.term.set(Terminator::Return(ret));
+        loc.locals.pop_scope();
+        loc.insert = old_blk;
+        loc.scope_name.truncate(old_len);
+        if erred.is_err() {
+            return (const_err(), erred);
+        }
+        let (func, erred) = 'func: {
+            if let Some(&v) = loc.locals.lookup(&*self.op) {
+                break 'func (Operand::Inst(v), Ok(()));
+            }
+            let mut storage = String::new();
+            for pre in loc.global_prefixes.iter().rev() {
+                let _ = write!(storage, "{pre}.{}", self.op);
+                if let Some(&(_, v)) = glb.global_syms.get(&*storage) {
+                    break 'func (Operand::Global(v), Ok(()));
                 }
-                .into(),
-            ),
-        )
+            }
+            let name = glb.intern_cow(&self.name);
+            if let Some(&(_, v)) = glb.global_syms.get(name) {
+                break 'func (Operand::Global(v), Ok(()));
+            }
+            let erred = (glb.report)(HirError::UnboundVariable {
+                name,
+                span: self.loc(),
+            });
+            (const_err(), erred)
+        };
+        let inst1 = glb.alloc.alloc(Inst {
+            name: "",
+            span: self.nloc,
+            kind: InstKind::Call { func, arg: val },
+            link: LinkedListLink::NEW,
+        }).into_ref();
+        loc.insert.0.push_back(inst1);
+        let inst2 = glb.alloc.alloc(Inst {
+            name: "",
+            span: self.nloc,
+            kind: InstKind::Call { func: Operand::Inst(Id(inst1)), arg: Operand::Global(Id(cont)) },
+            link: LinkedListLink::NEW,
+        }).into_ref();
+        loc.insert.0.push_back(inst2);
+        (Operand::Inst(Id(inst2)), erred)
     }
 }
