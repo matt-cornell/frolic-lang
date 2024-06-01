@@ -886,28 +886,7 @@ where
                 TokenKind::Keyword(Keyword::Let) => {
                     let (val, err) = self.parse_let_decl(false, &mut ast_buf);
                     stuff.extend(ast_buf.drain(..).map(Ast));
-                    if let Some(val) = val {
-                        stuff.push(Ast(A::make_box(val)));
-                    } else {
-                        let mut depth = 1;
-                        let skip = self.input[self.index..].iter().position(|t| match t.kind {
-                            TokenKind::Open(Delim::Brace) => {
-                                depth += 1;
-                                false
-                            }
-                            TokenKind::Close(Delim::Brace) => {
-                                depth -= 1;
-                                depth == 0
-                            }
-                            TokenKind::Special(SpecialChar::Semicolon) => true,
-                            _ => false
-                        });
-                        if let Some(skip) = skip {
-                            self.index += skip;
-                        } else {
-                            self.index = self.input.len();
-                        }
-                    }
+                    stuff.push(Ast(A::make_box(val)));
                     check_semicolon = true;
                     if err {
                         erred = true;

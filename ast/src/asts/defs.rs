@@ -1,5 +1,4 @@
 use super::*;
-use crate::dottedname::DottedName;
 
 /// A function parameter
 #[derive(Debug, Clone, PartialEq)]

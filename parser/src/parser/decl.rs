@@ -25,7 +25,7 @@ where
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
 {
-    fn parse_dottedname(
+    pub fn parse_dottedname(
         &mut self,
         out: &mut Vec<A::AstBox>,
     ) -> (Option<DottedName<'src, S>>, bool) {
@@ -68,7 +68,7 @@ where
         }
     }
 
-    fn get_docs(&self) -> Cow<'src, [u8]> {
+    fn get_docs(&self, inner: bool) -> Cow<'src, [u8]> {
         let mut out = Cow::Borrowed(&[][..]);
         let mut index = self.index;
         while let Some(idx) = index.checked_sub(1) {
@@ -89,6 +89,26 @@ where
                 _ => break,
             }
         }
+        if inner {
+            loop {
+                let Some(Token { kind, ..}) = self.current_token() else { break };
+                match kind {
+                    TokenKind::Comment(_, CommentKind::Ignore) => {},
+                    TokenKind::Comment(ref comm, CommentKind::InnerDoc) => {
+                        if !comm.is_empty() {
+                            if out.is_empty() {
+                                out.clone_from(comm);
+                            } else {
+                                let r = out.to_mut();
+                                r.push(b'\n');
+                                r.extend_from_slice(comm);
+                            }
+                        }
+                    }
+                    _ => break,
+                }
+            }
+        }
         out
     }
 
@@ -96,49 +116,49 @@ where
         &mut self,
         global: bool,
         out: &mut Vec<A::AstBox>,
-    ) -> (Option<asts::LetAST<'src, A::AstBox>>, bool) {
-        let doc = self.get_docs();
+    ) -> (asts::LetAST<'src, A::AstBox>, bool) {
+        let doc = self.get_docs(false);
         let kw = self.input[self.index].span;
         self.index += 1;
         let name = if global {
             match self.parse_dottedname(out) {
                 (Some(n), false) => n,
-                (Some(name), true) => {
+                (None, false) => DottedName::local("<error>", self.curr_loc()),
+                (name, true) => {
                     return (
-                        Some(asts::LetAST {
+                        asts::LetAST {
                             kw,
                             doc,
-                            name,
+                            name: name.unwrap_or(DottedName::local("<error>", self.curr_loc())),
                             params: smallvec![],
                             ret: None,
                             body: A::make_box(asts::ErrorAST {
                                 loc: self.curr_loc(),
                             }),
-                        }),
+                        },
                         true,
                     )
                 }
-                (None, ret) => return (None, ret),
             }
         } else {
             match self.parse_ident(true, out) {
                 (Some((name, span)), false) => DottedName::local(name, span),
-                (Some((name, span)), true) => {
+                (None, false) => DottedName::local("<error>", self.curr_loc()),
+                (name, true) => {
                     return (
-                        Some(asts::LetAST {
+                        asts::LetAST {
                             kw,
                             doc,
-                            name: DottedName::local(name, span),
+                            name: name.map_or(DottedName::local("<error>", self.curr_loc()), |(name, span)| DottedName::local(name, span)),
                             params: smallvec![],
                             ret: None,
                             body: A::make_box(asts::ErrorAST {
                                 loc: self.curr_loc(),
                             }),
-                        }),
+                        },
                         true,
                     )
                 }
-                (None, ret) => return (None, ret),
             }
         };
         let mut params = smallvec![];
@@ -147,7 +167,7 @@ where
                 TokenKind::Comment(..) => {
                     if self.eat_comment(out) {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -156,7 +176,7 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
@@ -173,7 +193,7 @@ where
                     self.index += 1;
                     if self.eat_comment(out) {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -182,7 +202,7 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
@@ -190,7 +210,7 @@ where
                         match self.parse_ident(true, out) {
                             (_, true) => {
                                 return (
-                                    Some(asts::LetAST {
+                                    asts::LetAST {
                                         kw,
                                         doc,
                                         name,
@@ -199,7 +219,7 @@ where
                                         body: A::make_box(asts::ErrorAST {
                                             loc: self.curr_loc(),
                                         }),
-                                    }),
+                                    },
                                     true,
                                 )
                             }
@@ -232,7 +252,7 @@ where
                         };
                     if self.eat_comment(out) {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -241,7 +261,7 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
@@ -255,7 +275,7 @@ where
                         let err = self.exp_found("parameter type");
                         if self.report(err) {
                             return (
-                                Some(asts::LetAST {
+                                asts::LetAST {
                                     kw,
                                     doc,
                                     name,
@@ -264,7 +284,7 @@ where
                                     body: A::make_box(asts::ErrorAST {
                                         loc: self.curr_loc(),
                                     }),
-                                }),
+                                },
                                 true,
                             );
                         }
@@ -294,7 +314,7 @@ where
                     self.index += 1;
                     if self.eat_comment(out) {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -303,7 +323,7 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
@@ -315,7 +335,7 @@ where
                     });
                     if ret {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -324,13 +344,13 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
                     if self.eat_comment(out) {
                         return (
-                            Some(asts::LetAST {
+                            asts::LetAST {
                                 kw,
                                 doc,
                                 name,
@@ -339,7 +359,7 @@ where
                                 body: A::make_box(asts::ErrorAST {
                                     loc: self.curr_loc(),
                                 }),
-                            }),
+                            },
                             true,
                         );
                     }
@@ -353,7 +373,7 @@ where
                         let err = self.exp_found("')'");
                         if self.report(err) {
                             return (
-                                Some(asts::LetAST {
+                                asts::LetAST {
                                     kw,
                                     doc,
                                     name,
@@ -362,7 +382,7 @@ where
                                     body: A::make_box(asts::ErrorAST {
                                         loc: self.curr_loc(),
                                     }),
-                                }),
+                                },
                                 true,
                             );
                         }
@@ -402,7 +422,7 @@ where
             let (res, ret) = self.parse_expr(true, true, out);
             if ret {
                 return (
-                    Some(asts::LetAST {
+                    asts::LetAST {
                         kw,
                         doc,
                         name,
@@ -411,7 +431,7 @@ where
                         body: A::make_box(asts::ErrorAST {
                             loc: self.curr_loc(),
                         }),
-                    }),
+                    },
                     true,
                 );
             }
@@ -430,14 +450,14 @@ where
             let err = self.exp_found("value for let-binding");
             if self.report(err) {
                 return (
-                    Some(asts::LetAST {
+                    asts::LetAST {
                         kw,
                         doc,
                         name,
                         params,
                         ret,
                         body: A::make_box(asts::ErrorAST { loc }),
-                    }),
+                    },
                     true,
                 );
             }
@@ -451,15 +471,79 @@ where
         }
         let (body, err) = self.parse_expr(true, true, out);
         (
-            Some(asts::LetAST {
+            asts::LetAST {
                 kw,
                 doc,
                 name,
                 params,
                 ret,
                 body,
-            }),
+            },
             err,
         )
+    }
+    
+    pub fn parse_namespace_def(
+        &mut self,
+        out: &mut Vec<A::AstBox>,
+    ) -> (asts::NamespaceAST<'src, A::AstBox>, bool) where 
+    asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait> {
+        let kw = self.current_token().unwrap().span;
+        let doc = self.get_docs(true);
+        self.index += 1;
+        let (name, erred) = self.parse_dottedname(out);
+        let name = name.unwrap_or_else(|| DottedName::local("<error>", self.curr_loc()));
+        if erred {
+            return (asts::NamespaceAST {
+                name, kw, doc,
+                body: self.curr_loc(),
+                nodes: vec![]
+            }, true);
+        }
+        let start = if let Some(&Token { kind: TokenKind::Open(Delim::Brace), span }) = self.current_token() {
+            self.index += 1;
+            span
+        } else {
+            let err = self.exp_found("namespace body");
+            let body = self.curr_loc();
+            if self.report(err) {
+                return (asts::NamespaceAST {
+                    name, kw,
+                    body, doc,
+                    nodes: vec![]
+                }, true)
+            } else {
+                body
+            }
+        };
+        let mut nodes = Vec::<A::AstBox>::new();
+        let erred = self.parse_top_level(true, &mut nodes);
+        if erred {
+            return (asts::NamespaceAST {
+                name, kw, doc,
+                body: nodes.last().map_or(start, |end| start.merge(end.loc())),
+                nodes
+            }, true);
+        }
+        let end = if let Some(&Token { kind: TokenKind::Close(Delim::Brace), span }) = self.current_token() {
+            self.index += 1;
+            span
+        } else {
+            let err = self.exp_found("closing '}'");
+            let end = self.curr_loc();
+            if self.report(err) {
+                return (asts::NamespaceAST {
+                    name, kw, doc,
+                    body: start.merge(end),
+                    nodes
+                }, true)
+            } else {
+                end
+            }
+        };
+        (asts::NamespaceAST {
+            name, kw, body: start.merge(end),
+            doc, nodes
+        }, false)
     }
 }

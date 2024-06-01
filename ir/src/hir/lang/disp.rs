@@ -121,6 +121,10 @@ impl<S> Display for Global<'_, S> {
         if let Some(cap) = self.captures {
             writeln!(f, "# captures {}", Id(cap))?;
         }
+        {
+            let mut ind = indenter::indented(f).with_str("## ");
+            writeln!(ind, "{}", bstr::BStr::new(self.docs))?;
+        }
         if let Some(op) = self.as_alias() {
             writeln!(f, "let {} = {op};", Id(self))
         } else {

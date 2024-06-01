@@ -39,7 +39,7 @@ pub enum Keyword {
     If,
     Then,
     Else,
-    For,
+    Namespace,
 }
 impl Keyword {
     pub fn as_str(self) -> &'static str {

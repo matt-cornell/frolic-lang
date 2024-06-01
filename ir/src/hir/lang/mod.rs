@@ -14,6 +14,9 @@ fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str("null")
     }
 }
+fn debug_bstr<T: AsRef<[u8]>>(val: &T, f: &mut Formatter<'_>) -> fmt::Result {
+    Debug::fmt(bstr::BStr::new(val), f)
+}
 
 /// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
 #[repr(transparent)]
@@ -72,6 +75,8 @@ pub struct Global<'b, S> {
     #[derivative(Debug(format_with = "ptr_opt"))]
     pub captures: Option<&'b Global<'b, S>>,
     pub is_func: bool,
+    #[derivative(Debug(format_with = "debug_bstr"))]
+    pub docs: &'b [u8],
     pub span: S,
     pub blocks: LinkedList<'b, Block<'b, S>>,
     pub link: LinkedListLink<'b, Self>,

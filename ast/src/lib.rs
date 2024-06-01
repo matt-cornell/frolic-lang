@@ -8,6 +8,7 @@ use std::borrow::Cow;
 pub mod prelude {
     pub use crate::dottedname::DottedName;
     pub mod asts {
+        pub use crate::asts::FrolicAST;
         pub use crate::asts::defs::*;
         pub use crate::asts::flow::*;
         pub use crate::asts::func::*;
@@ -15,6 +16,7 @@ pub mod prelude {
         pub use crate::asts::lits::*;
         pub use crate::asts::misc::*;
         pub use crate::asts::op::*;
+        pub use crate::asts::scope::*;
         pub use crate::asts::types::*;
     }
 }

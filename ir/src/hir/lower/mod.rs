@@ -10,7 +10,9 @@ use derive_more::{Deref, DerefMut};
 use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::hash_map::{HashMap, Entry};
+use std::fmt::Write;
+use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use smallvec::{smallvec, SmallVec};
 
@@ -27,6 +29,7 @@ mod groups;
 mod lits;
 mod misc;
 mod op;
+mod scope;
 mod types;
 
 const fn const_err<'b, S>() -> Operand<'b, S> {
@@ -43,6 +46,22 @@ pub struct GlobalPreContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> 
     pub global_syms: &'g mut HashMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
+impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalPreContext<'g, 'b, S, F, A> {
+    #[allow(clippy::ptr_arg)]
+    pub fn intern_cow_str<'src: 'b>(&self, cow: &Cow<'src, str>) -> &'b str {
+        match cow {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(s) => self.alloc.alloc_str(s).into_ref(),
+        }
+    }
+    #[allow(clippy::ptr_arg)]
+    pub fn intern_cow_slice<'src: 'b, T: Copy>(&self, cow: &Cow<'src, [T]>) -> &'b [T] {
+        match cow {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(s) => self.alloc.alloc_slice_copy(s).into_ref(),
+        }
+    }
+}
 
 #[derive(Derivative)]
 #[derivative(Debug)]
@@ -56,10 +75,17 @@ pub struct GlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> {
 }
 impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalContext<'g, 'b, S, F, A> {
     #[allow(clippy::ptr_arg)]
-    pub fn intern_cow<'src: 'b>(&self, cow: &Cow<'src, str>) -> &'b str {
+    pub fn intern_cow_str<'src: 'b>(&self, cow: &Cow<'src, str>) -> &'b str {
         match cow {
             Cow::Borrowed(s) => s,
             Cow::Owned(s) => self.alloc.alloc_str(s).into_ref(),
+        }
+    }
+    #[allow(clippy::ptr_arg)]
+    pub fn intern_cow_slice<'src: 'b, T: Copy>(&self, cow: &Cow<'src, [T]>) -> &'b [T] {
+        match cow {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(s) => self.alloc.alloc_slice_copy(s).into_ref(),
         }
     }
 }
@@ -126,6 +152,72 @@ impl<'b> LocalInGlobalContext<'b> {
         let ret = f(&mut this);
         *self = this.ctx;
         ret
+    }
+
+    pub fn predef_ns<'src, S: Span, V: Deref<Target = [(Cow<'src, str>, S)]>, F: Clone>(&mut self, name: &DottedName<'src, S, V>, doc: &'b [u8], glb: &mut GlobalPreContext<'_, 'b, S, F>) -> LowerResult {
+        if name.segs.is_empty() {
+            return Ok(());
+        };
+        let full_name = glb
+            .alloc
+            .alloc_fmt(format_args!("{}.{}", self.scope_name, name))
+            .into_ref();
+        name
+            .segs
+            .iter()
+            .enumerate()
+            .try_fold(self.scope_name.len(), |mut len, (n, (seg, _))| {
+                len += seg.len() + 1;
+                let is_last = n == name.segs.len() - 1;
+                let dnloc = DottedName {
+                    segs: &name.segs[..=n],
+                }
+                .loc();
+                let name = &full_name[..len];
+                match glb.global_syms.entry(name) {
+                    Entry::Occupied(e) => {
+                        let (file, Id(old @ &Global { span, .. })) = e.get();
+                        if old
+                                .as_alias()
+                                .map_or(true, |a| a != Operand::Const(Constant::Namespace(name)))
+                        {
+                            (glb.report)(
+                                HirError::DuplicateDefinition {
+                                    name,
+                                    span: dnloc,
+                                    prev: PrevDef {
+                                        span,
+                                        file: file.clone(),
+                                    },
+                                },
+                            )?;
+                        }
+                    }
+                    Entry::Vacant(e) => {
+                        let gid = glb
+                            .alloc
+                            .alloc(Global {
+                                name,
+                                span: dnloc,
+                                captures: None,
+                                is_func: false,
+                                docs: if is_last { doc } else { &[] },
+                                blocks: LinkedList::NEW,
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
+                        glb.module.push_back(gid);
+                        let term =
+                            Terminator::Return(Operand::Const(Constant::Namespace(name)));
+                        let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                        gid.push_back(blk);
+                        blk.term.set(term);
+                        e.insert((glb.file.clone(), Id(gid)));
+                    }
+                }
+                Ok(len)
+            })
+            .map(|_| ())
     }
 }
 
@@ -248,6 +340,10 @@ pub mod single_threaded {
                 global_syms,
                 file: ast.file.clone(),
             };
+            if let Some(name) = &ast.name {
+                loc.predef_ns(name, &[], &mut glb)?;
+                let _ = write!(loc.scope_name, ".{name}");
+            }
             ast.nodes
                 .iter()
                 .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
@@ -345,6 +441,10 @@ pub mod multi_threaded {
                 global_syms,
                 file: ast.file.clone(),
             };
+            if let Some(name) = &ast.name {
+                loc.predef_ns(name, &[], &mut glb)?;
+                let _ = write!(loc.scope_name, ".{name}");
+            }
             ast.nodes
                 .iter()
                 .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
