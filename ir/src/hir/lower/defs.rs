@@ -1,5 +1,6 @@
 use super::*;
 use std::collections::hash_map::Entry;
+use vec1::smallvec_v1::SmallVec1;
 
 impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetAST<'src, A> {
     fn local(
@@ -17,79 +18,128 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{self_name}");
         let (ret, erred) = if let Some((last, rest)) = self.params.split_last() {
-            let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
-            let mut inner = None;
-            for i in 0..=rest.len() {
-                let gid = glb
-                    .alloc
-                    .alloc(Global {
-                        name: if i == 0 {glb.alloc.alloc_str(&loc.scope_name).into_ref()} else {glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref()},
-                        span: nloc,
-                        captures: stack.last().copied().or(loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed)),
-                        is_func: true,
-                        blocks: LinkedList::NEW,
+            'func: {
+                let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
+                let mut inner = None;
+                let mut types = SmallVec1::<[_; 3]>::try_from_elem(Operand::Const(Constant::Unknown), self.params.len() + 1).unwrap();
+                {
+                    if let Some(ret) = &self.ret {
+                        let (ret, erred) = ret.local(glb, loc);
+                        if erred.is_err() {
+                            break 'func (const_err(), erred);
+                        }
+                        *types.last_mut() = ret;
+                    }
+                    for (n, param) in (0..self.params.len()).rev().zip(&self.params) {
+                        let pty = if let Some(ty) = &param.ty {
+                            let (pty, erred) = ty.local(glb, loc);
+                            if erred.is_err() {
+                                break 'func (const_err(), erred);
+                            }
+                            pty
+                        } else {
+                            Operand::Const(Constant::Unknown)
+                        };
+                        let name = glb.alloc.alloc_fmt(format_args!("{}.#{n}.#ty", param.name)).into_ref();
+                        let base = glb.alloc.alloc(Inst {
+                            name: "",
+                            span: nloc,
+                            kind: InstKind::FnType { ret: types[n + 1], arg: pty },
+                            link: LinkedListLink::NEW,
+                        }).into_ref();
+                        loc.insert.0.push_back(base);
+                        let ty = glb.alloc.alloc(Inst {
+                            name,
+                            span: nloc,
+                            kind: InstKind::NamedTy { name, base: Operand::Inst(Id(base)), decays: true },
+                            link: LinkedListLink::NEW,
+                        }).into_ref();
+                        loc.insert.0.push_back(ty);
+                        types[n] = Operand::Inst(Id(ty));
+                    }
+                }
+                for i in 0..=rest.len() {
+                    let gid = glb
+                        .alloc
+                        .alloc(Global {
+                            name: if i == 0 {glb.alloc.alloc_str(&loc.scope_name).into_ref()} else {glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref()},
+                            span: nloc,
+                            kind: GlobalKind::Local {
+                                captures: Id(stack.last().copied().or(loc.insert.0.parent(Ordering::Relaxed)).unwrap()),
+                                ty: types[i]
+                            },
+                            is_func: true,
+                            blocks: LinkedList::NEW,
+                            link: LinkedListLink::NEW,
+                        })
+                        .into_ref();
+                    glb.module.push_back(gid);
+                    stack.push(gid);
+                    inner = Some(gid);
+                }
+                let inner = inner.unwrap();
+                let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                inner.push_back(blk);
+                let old_ins = std::mem::replace(&mut loc.insert, Id(blk));
+                for ([caller, callee], param) in stack.array_windows().zip(rest) {
+                    let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
+                    caller.push_back(blk);
+                    let name = glb.intern_cow(&param.name);
+                    let inst = glb.alloc.alloc(Inst {
+                        name, span: param.loc,
+                        kind: InstKind::Arg,
                         link: LinkedListLink::NEW,
-                    })
-                    .into_ref();
-                glb.module.push_back(gid);
-                stack.push(gid);
-                inner = Some(gid);
+                    }).into_ref();
+                    blk.push_back(inst);
+                    loc.locals.insert(name, Id(inst));
+                }
+                {
+                    let name = glb.intern_cow(&last.name);
+                    let inst = glb.alloc.alloc(Inst {
+                        name, span: last.loc,
+                        kind: InstKind::Arg,
+                        link: LinkedListLink::NEW,
+                    }).into_ref();
+                    loc.insert.0.push_back(inst);
+                    loc.locals.insert(name, Id(inst));
+                }
+                let self_val = {
+                    let name = glb.intern_cow(self_name);
+                    let inst = glb.alloc.alloc(Inst {
+                        name, span: nloc,
+                        kind: InstKind::Bind(Operand::Global(Id(stack[0]))),
+                        link: LinkedListLink::NEW,
+                    }).into_ref();
+                    old_ins.0.push_back(inst);
+                    loc.locals.insert(name, Id(inst));
+                    inst
+                };
+                let (ret, erred) = self.body.local(glb, loc);
+                loc.insert.0.term.set(Terminator::Return(ret));
+                loc.insert = old_ins;
+                (Operand::Inst(Id(self_val)), erred)
             }
-            let inner = inner.unwrap();
-            let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
-            inner.push_back(blk);
-            let old_ins = std::mem::replace(&mut loc.insert, Id(blk));
-            for ([caller, callee], param) in stack.array_windows().zip(rest) {
-                let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
-                caller.push_back(blk);
-                let name = glb.intern_cow(&param.name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: param.loc,
-                    kind: InstKind::Arg,
-                    link: LinkedListLink::NEW,
-                }).into_ref();
-                blk.push_back(inst);
-                loc.locals.insert(name, Id(inst));
-            }
-            {
-                let name = glb.intern_cow(&last.name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: last.loc,
-                    kind: InstKind::Arg,
-                    link: LinkedListLink::NEW,
-                }).into_ref();
-                loc.insert.0.push_back(inst);
-                loc.locals.insert(name, Id(inst));
-            }
-            let self_val = {
-                let name = glb.intern_cow(self_name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: nloc,
-                    kind: InstKind::Bind(Operand::Global(Id(stack[0]))),
-                    link: LinkedListLink::NEW,
-                }).into_ref();
-                old_ins.0.push_back(inst);
-                loc.locals.insert(name, Id(inst));
-                inst
-            };
-            let (ret, erred) = self.body.local(glb, loc);
-            loc.insert.0.term.set(Terminator::Return(ret));
-            loc.insert = old_ins;
-            (self_val, erred)
         } else {
+            let (ty, erred) = self.ret.as_ref().map_or((None, Ok(())), |ret| {
+                let (ty, err) = ret.local(glb, loc);
+                (Some(ty), err)
+            });
+            if erred.is_err() {
+                return (const_err(), erred);
+            }
             let (val, erred) = self.body.local(glb, loc);
             let name = glb.intern_cow(self_name);
             let inst = glb.alloc.alloc(Inst {
                 name, span: nloc,
-                kind: InstKind::Bind(val),
+                kind: if let Some(ty) = ty { InstKind::Ascribe { val, ty } } else { InstKind::Bind(val) },
                 link: LinkedListLink::NEW,
             }).into_ref();
             loc.insert.0.push_back(inst);
             loc.locals.insert(name, Id(inst));
-            (inst, erred)
+            (Operand::Inst(Id(inst)), erred)
         };
         loc.scope_name.truncate(old_len);
-        (Operand::Inst(Id(ret)), erred)
+        (ret, erred)
     }
 
     fn predef_global(
@@ -142,8 +192,8 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                             .alloc(Global {
                                 name,
                                 span: dnloc,
-                                captures: None,
                                 is_func: is_last && !self.params.is_empty(),
+                                kind: if is_last { GlobalKind::Global(AtomicRef::new(None)) } else { GlobalKind::NAMESPACE },
                                 blocks: LinkedList::NEW,
                                 link: LinkedListLink::NEW,
                             })
@@ -181,87 +231,100 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
             );
         };
         let erred = if let Some((last, without_last)) = self.params.split_last() {
-            if let Some((_first, rest)) = without_last.split_first() {
-                let dnloc = self.name.loc();
-                let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
-                stack.push(outer);
-                for i in 1..=rest.len() {
-                    let gid = glb
+            'func: {
+                let mut types = SmallVec1::<[_; 3]>::try_from_elem(None, self.params.len() + 1).unwrap();
+                // TODO: types
+                if let Some((_first, rest)) = without_last.split_first() {
+                    let dnloc = self.name.loc();
+                    let mut stack = SmallVec::<[_; 2]>::with_capacity(self.params.len());
+                    stack.push(outer);
+                    if let GlobalKind::Global(aref) = &outer.kind {
+                        aref.store(types[0], Ordering::Relaxed);
+                    }
+                    for i in 1..=rest.len() {
+                        let gid = glb
+                            .alloc
+                            .alloc(Global {
+                                name: glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref(),
+                                span: dnloc,
+                                is_func: true,
+                                kind: GlobalKind::Local {
+                                    captures: Id(*stack.last().unwrap()),
+                                    ty: Operand::Global(Id(types[i].unwrap())),
+                                },
+                                blocks: LinkedList::NEW,
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
+                        glb.module.push_back(gid);
+                        stack.push(gid);
+                    }
+                    let inner = glb
                         .alloc
                         .alloc(Global {
-                            name: glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref(),
+                            name: glb.alloc.alloc_fmt(format_args!("{}.#{}", loc.scope_name, rest.len() + 1)).into_ref(),
                             span: dnloc,
-                            captures: stack.last().copied(),
                             is_func: true,
+                            kind: GlobalKind::Local {
+                                captures: Id(*stack.last().unwrap()),
+                                ty: Operand::Global(Id(types[rest.len()].unwrap())),
+                            },
                             blocks: LinkedList::NEW,
                             link: LinkedListLink::NEW,
                         })
                         .into_ref();
-                    glb.module.push_back(gid);
-                    stack.push(gid);
-                }
-                let inner = glb
-                    .alloc
-                    .alloc(Global {
-                        name: glb.alloc.alloc_fmt(format_args!("{}.#{}", loc.scope_name, rest.len() + 1)).into_ref(),
-                        span: dnloc,
-                        captures: stack.last().copied(),
-                        is_func: true,
-                        blocks: LinkedList::NEW,
-                        link: LinkedListLink::NEW,
+                    glb.module.push_back(inner);
+                    stack.push(inner);
+                    let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                    inner.push_back(blk);
+                    loc.in_local(Id(blk), |loc| {
+                        for ([caller, callee], param) in stack.array_windows().zip(without_last) {
+                            let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
+                            caller.push_back(blk);
+                            let name = glb.intern_cow(&param.name);
+                            let inst = glb.alloc.alloc(Inst {
+                                name, span: param.loc,
+                                kind: InstKind::Arg,
+                                link: LinkedListLink::NEW,
+                            }).into_ref();
+                            blk.push_back(inst);
+                            loc.locals.insert(name, Id(inst));
+                        }
+                        {
+                            let name = glb.intern_cow(&last.name);
+                            let inst = glb.alloc.alloc(Inst {
+                                name, span: last.loc,
+                                kind: InstKind::Arg,
+                                link: LinkedListLink::NEW,
+                            }).into_ref();
+                            loc.insert.0.push_back(inst);
+                            loc.locals.insert(name, Id(inst));
+                        }
+                        let (ret, erred) = self.body.local(glb, loc);
+                        loc.insert.0.term.set(Terminator::Return(ret));
+                        erred
                     })
-                    .into_ref();
-                glb.module.push_back(inner);
-                stack.push(inner);
-                let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
-                inner.push_back(blk);
-                loc.in_local(Id(blk), |loc| {
-                    for ([caller, callee], param) in stack.array_windows().zip(without_last) {
-                        let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
-                        caller.push_back(blk);
-                        let name = glb.intern_cow(&param.name);
-                        let inst = glb.alloc.alloc(Inst {
-                            name, span: param.loc,
-                            kind: InstKind::Arg,
-                            link: LinkedListLink::NEW,
-                        }).into_ref();
-                        blk.push_back(inst);
-                        loc.locals.insert(name, Id(inst));
-                    }
-                    {
+                } else {
+                    let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
+                    outer.push_back(blk);
+                    loc.in_local(Id(blk), |loc| {
                         let name = glb.intern_cow(&last.name);
-                        let inst = glb.alloc.alloc(Inst {
-                            name, span: last.loc,
-                            kind: InstKind::Arg,
-                            link: LinkedListLink::NEW,
-                        }).into_ref();
+                        let inst = glb
+                            .alloc
+                            .alloc(Inst {
+                                name,
+                                span: last.loc,
+                                kind: InstKind::Arg,
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
                         loc.insert.0.push_back(inst);
                         loc.locals.insert(name, Id(inst));
-                    }
-                    let (ret, erred) = self.body.local(glb, loc);
-                    loc.insert.0.term.set(Terminator::Return(ret));
-                    erred
-                })
-            } else {
-                let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
-                outer.push_back(blk);
-                loc.in_local(Id(blk), |loc| {
-                    let name = glb.intern_cow(&last.name);
-                    let inst = glb
-                        .alloc
-                        .alloc(Inst {
-                            name,
-                            span: last.loc,
-                            kind: InstKind::Arg,
-                            link: LinkedListLink::NEW,
-                        })
-                        .into_ref();
-                    loc.insert.0.push_back(inst);
-                    loc.locals.insert(name, Id(inst));
-                    let (ret, erred) = self.body.local(glb, loc);
-                    loc.insert.0.term.set(Terminator::Return(ret));
-                    erred
-                })
+                        let (ret, erred) = self.body.local(glb, loc);
+                        loc.insert.0.term.set(Terminator::Return(ret));
+                        erred
+                    })
+                }
             }
         } else {
             let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
@@ -296,7 +359,10 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
             name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
             span: self.nloc,
             is_func: true,
-            captures: loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed),
+            kind: GlobalKind::Local {
+                captures: Id(loc.insert.0.parent(Ordering::Relaxed).unwrap()),
+                ty: Operand::Const(Constant::Unknown),
+            },
             blocks: LinkedList::NEW,
             link: LinkedListLink::NEW,
         }).into_ref();

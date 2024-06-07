@@ -52,6 +52,7 @@ impl Display for Constant<'_> {
             Self::Float(v) => write!(f, "float {v}"),
             Self::String(v) => write!(f, "str {:?}", bstr::BStr::new(v)),
             Self::Namespace(n) => write!(f, "namespace {n}"),
+            Self::Intrinsic(i) => write!(f, "intr {i}"),
         }
     }
 }
@@ -87,6 +88,14 @@ impl<S> Display for InstKind<'_, S> {
             Self::Bind(val) => write!(f, "bind {val}"),
             Self::Cast { val, ty } => write!(f, "cast {val} to {ty}"),
             Self::Ascribe { val, ty } => write!(f, "asc {val} to {ty}"),
+            Self::NamedTy { name, base, decays } => {
+                write!(f, "wrap {base} as {name:?}")?;
+                if *decays {
+                    f.write_str(" decay")
+                } else {
+                    Ok(())
+                }
+            }
             Self::Phi(vars) => {
                 f.write_str("phi")?;
                 let mut it = vars.iter().peekable();
@@ -117,14 +126,24 @@ impl<S> Display for Block<'_, S> {
 }
 impl<S> Display for Global<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use std::fmt::Write;
-        if let Some(cap) = self.captures {
-            writeln!(f, "# captures {}", Id(cap))?;
-        }
+        let ty = match &self.kind {
+            GlobalKind::Local { captures, ty } => {
+                writeln!(f, "# captures {captures}")?;
+                *ty
+            },
+            GlobalKind::Global(r) => {
+                if let Some(ty) = r.load(Ordering::Relaxed) {
+                    Operand::Global(Id(ty))
+                } else {
+                    Operand::Const(Constant::Unknown)
+                }
+            }
+            &GlobalKind::Intrinsic(i) => Operand::Const(Constant::Intrinsic(i)),
+        };
         if let Some(op) = self.as_alias() {
-            writeln!(f, "let {} = {op};", Id(self))
+            writeln!(f, "let {} of {ty} = {op};", Id(self))
         } else {
-            writeln!(f, "let {} {{", Id(self))?;
+            writeln!(f, "let {} of {ty} {{", Id(self))?;
             let mut ind = indenter::indented(f).with_str("  ");
             for blk in self.blocks.iter() {
                 write!(ind, "{blk}")?;

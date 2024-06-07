@@ -1,6 +1,8 @@
 #![allow(clippy::type_complexity)]
 
+use super::*;
 use super::lang::*;
+use crate::common::Intrinsic;
 use crate::common::list::*;
 use crate::common::symbols::Scopes;
 use bump_scope::allocator_api2::alloc::{Allocator, Global as AGlobal};

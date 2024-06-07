@@ -11,13 +11,41 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LambdaAST<'
         let old = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".[{}-{}]", sloc.offset(), sloc.end());
         loc.locals.push_new_scope();
+        let arg = if let Some(ty) = &self.argty {
+            let (ty, erred) = ty.local(glb, loc);
+            if erred.is_err() {
+                loc.locals.pop_scope();
+                loc.scope_name.truncate(old);
+                return (const_err(), erred);
+            }
+            ty
+        } else { Operand::Const(Constant::Unknown) };
+        let ret = if let Some(ty) = &self.retty {
+            let (ty, erred) = ty.local(glb, loc);
+            if erred.is_err() {
+                loc.locals.pop_scope();
+                loc.scope_name.truncate(old);
+                return (const_err(), erred);
+            }
+            ty
+        } else { Operand::Const(Constant::Unknown) };
+        let inst = glb.alloc.alloc(Inst {
+            name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+            span: sloc,
+            kind: InstKind::FnType { arg, ret },
+            link: LinkedListLink::NEW,
+        }).into_ref();
+        loc.insert.0.push_back(inst);
         let gid = Id(glb
             .alloc
             .alloc(Global {
                 name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
-                captures: loc.insert.0.parent(Ordering::Relaxed),
                 is_func: true,
                 span: sloc,
+                kind: GlobalKind::Local {
+                    captures: Id(loc.insert.0.parent(Ordering::Relaxed).unwrap()),
+                    ty: Operand::Inst(Id(inst)),
+                },
                 blocks: LinkedList::NEW,
                 link: LinkedListLink::NEW,
             })

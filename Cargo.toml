@@ -17,5 +17,6 @@ frolic-utils = { version = "0.0.1", path = "utils" }
 impl-tools = "0.10.0"
 miette = "7.2"
 smallvec = { version = "1.13.2", features = ["const_new"] }
+strum = { version = "0.26.2", features = ["derive"] }
 thiserror = "1.0"
 vec1 = { version = "1.12.1", features = ["smallvec-v1"] }

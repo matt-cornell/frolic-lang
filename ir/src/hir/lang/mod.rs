@@ -1,19 +1,12 @@
+use super::*;
+use crate::common::Intrinsic;
 use crate::common::list::{LinkedList, LinkedListElem, LinkedListLink, LinkedListParent};
 use bump_scope::NoDrop;
 use derivative::Derivative;
 use derive_more::From;
 use frolic_utils::synccell::SyncCell;
-use std::fmt::{self, Debug, Formatter};
 
 mod disp;
-
-fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
-    if let Some(ptr) = val {
-        write!(f, "{ptr:p}")
-    } else {
-        f.write_str("null")
-    }
-}
 
 /// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
 #[repr(transparent)]
@@ -65,14 +58,40 @@ impl<'b, S> LinkedListParent<'b> for Module<'b, S> {
     }
 }
 
-#[derive(Derivative, PartialEq)]
-#[derivative(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug(bound = ""))]
+pub enum GlobalKind<'b, S> {
+    Local {
+        ty: Operand<'b, S>,
+        captures: GlobalId<'b, S>,
+    },
+    Global(#[derivative(Debug(format_with = "fmt_ref"))] AtomicRef<'b, Global<'b, S>>),
+    Intrinsic(Intrinsic),
+}
+impl<'b, S> GlobalKind<'b, S> {
+    pub const NAMESPACE: Self = Self::Intrinsic(Intrinsic::NamespaceType);
+    pub fn get_ty(&self) -> Operand<'b, S> {
+        match self {
+            Self::Global(r) => {
+                if let Some(ty) = r.load(Ordering::Relaxed) {
+                    Operand::Global(Id(ty))
+                } else {
+                    Operand::Const(Constant::Unknown)
+                }
+            }
+            &Self::Local { ty, .. } => ty,
+            &Self::Intrinsic(i) => Operand::Const(Constant::Intrinsic(i)),
+        }
+    }
+}
+impl<S> NoDrop for GlobalKind<'_, S> {}
+
+#[derive(Debug)]
 pub struct Global<'b, S> {
     pub name: &'b str,
-    #[derivative(Debug(format_with = "ptr_opt"))]
-    pub captures: Option<&'b Global<'b, S>>,
     pub is_func: bool,
     pub span: S,
+    pub kind: GlobalKind<'b, S>,
     pub blocks: LinkedList<'b, Block<'b, S>>,
     pub link: LinkedListLink<'b, Self>,
 }
@@ -168,6 +187,7 @@ pub enum Constant<'b> {
     Unknown,
     Error,
     Null,
+    Intrinsic(Intrinsic),
     Int(i64),
     Float(f64),
     String(&'b [u8]),
@@ -246,6 +266,12 @@ pub enum InstKind<'b, S> {
     Ascribe {
         val: Operand<'b, S>,
         ty: Operand<'b, S>,
+    },
+    /// A type with a name. Also a base type for it to act like.
+    NamedTy {
+        name: &'b str,
+        base: Operand<'b, S>,
+        decays: bool,
     },
     /// Get value based on the predecessor.
     Phi(&'b [(BlockId<'b, S>, Operand<'b, S>)]),

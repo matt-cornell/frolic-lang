@@ -14,7 +14,7 @@ frolic-utils.workspace = true
 miette.workspace = true
 rayon = { version = "1.10.0", optional = true }
 smallvec.workspace = true
-strum = { version = "0.26.2", features = ["derive"] }
+strum.workspace = true
 thiserror.workspace = true
 unicode-ident = "1.0.12"
 
