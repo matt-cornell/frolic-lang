@@ -45,17 +45,17 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 let name = glb.intern_cow(&param.name);
                 let inst = glb.alloc.alloc(Inst {
                     name, span: param.loc,
-                    kind: InstKind::ArgOf { func: Id(caller) },
+                    kind: InstKind::Arg,
                     link: LinkedListLink::NEW,
                 }).into_ref();
-                loc.insert.0.push_back(inst);
+                blk.push_back(inst);
                 loc.locals.insert(name, Id(inst));
             }
             {
                 let name = glb.intern_cow(&last.name);
                 let inst = glb.alloc.alloc(Inst {
                     name, span: last.loc,
-                    kind: InstKind::ArgOf { func: Id(inner) },
+                    kind: InstKind::Arg,
                     link: LinkedListLink::NEW,
                 }).into_ref();
                 loc.insert.0.push_back(inst);
@@ -222,17 +222,17 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                         let name = glb.intern_cow(&param.name);
                         let inst = glb.alloc.alloc(Inst {
                             name, span: param.loc,
-                            kind: InstKind::ArgOf { func: Id(caller) },
+                            kind: InstKind::Arg,
                             link: LinkedListLink::NEW,
                         }).into_ref();
-                        loc.insert.0.push_back(inst);
+                        blk.push_back(inst);
                         loc.locals.insert(name, Id(inst));
                     }
                     {
                         let name = glb.intern_cow(&last.name);
                         let inst = glb.alloc.alloc(Inst {
                             name, span: last.loc,
-                            kind: InstKind::ArgOf { func: Id(inner) },
+                            kind: InstKind::Arg,
                             link: LinkedListLink::NEW,
                         }).into_ref();
                         loc.insert.0.push_back(inst);
@@ -252,7 +252,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                         .alloc(Inst {
                             name,
                             span: last.loc,
-                            kind: InstKind::ArgOf { func: Id(outer) },
+                            kind: InstKind::Arg,
                             link: LinkedListLink::NEW,
                         })
                         .into_ref();
@@ -308,7 +308,7 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
         let inst = glb.alloc.alloc(Inst {
             name: arg_name,
             span: self.nloc,
-            kind: InstKind::ArgOf { func: Id(cont) },
+            kind: InstKind::Arg,
             link: LinkedListLink::NEW,
         }).into_ref();
         blk.push_back(inst);

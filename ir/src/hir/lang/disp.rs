@@ -83,7 +83,7 @@ impl<S> Display for InstKind<'_, S> {
         match self {
             Self::Call { func, arg } => write!(f, "call {func} {arg}"),
             Self::FnType { arg, ret } => write!(f, "fnty {arg} -> {ret}"),
-            Self::ArgOf { func } => write!(f, "argof {func}"),
+            Self::Arg => f.write_str("arg"),
             Self::Bind(val) => write!(f, "bind {val}"),
             Self::Cast { val, ty } => write!(f, "cast {val} to {ty}"),
             Self::Ascribe { val, ty } => write!(f, "asc {val} to {ty}"),

@@ -235,8 +235,8 @@ pub enum InstKind<'b, S> {
     },
     /// Transparent, but gives a new name and span.
     Bind(Operand<'b, S>),
-    /// Argument of a function
-    ArgOf { func: GlobalId<'b, S> },
+    /// Argument of the current function
+    Arg,
     /// Cast a value to a given type.
     Cast {
         val: Operand<'b, S>,

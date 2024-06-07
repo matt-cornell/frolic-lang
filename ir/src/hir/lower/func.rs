@@ -33,7 +33,7 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LambdaAST<'
             .alloc(Inst {
                 name,
                 span: self.aloc,
-                kind: InstKind::ArgOf { func: gid },
+                kind: InstKind::Arg,
                 link: LinkedListLink::NEW,
             })
             .into_ref();
