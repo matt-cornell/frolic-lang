@@ -130,7 +130,7 @@ impl<S> Display for Global<'_, S> {
             GlobalKind::Local { captures, ty } => {
                 writeln!(f, "# captures {captures}")?;
                 *ty
-            },
+            }
             GlobalKind::Global(r) => {
                 if let Some(ty) = r.load(Ordering::Relaxed) {
                     Operand::Global(Id(ty))

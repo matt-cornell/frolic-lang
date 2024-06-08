@@ -1,7 +1,7 @@
 #![feature(array_windows)]
 use atomic_ref::AtomicRef;
-use std::sync::atomic::Ordering;
 use std::fmt::{self, Debug, Formatter, Write};
+use std::sync::atomic::Ordering;
 
 pub mod common;
 pub mod hir;

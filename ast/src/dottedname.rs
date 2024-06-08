@@ -17,9 +17,12 @@ impl<'src, S, const N: usize> DottedName<'src, S, SmallVec1<[(Cow<'src, str>, S)
     /// Construct a new `DottedName`. This generic signature allows for string-span pairs
     /// to be used as iterator items for the segments rather than `Cow`s.
     pub fn new<O: Into<Cow<'src, str>>, I: IntoIterator<Item = (O, S)>>(segs: I) -> Self {
-        let segs: SmallVec<[(Cow<'src, str>, S); N]> = segs.into_iter().map(|(n, s)| (n.into(), s)).collect();
+        let segs: SmallVec<[(Cow<'src, str>, S); N]> =
+            segs.into_iter().map(|(n, s)| (n.into(), s)).collect();
         Self {
-            segs: segs.try_into().expect("DottedName input should not be empty!"),
+            segs: segs
+                .try_into()
+                .expect("DottedName input should not be empty!"),
         }
     }
     /// Convenience function to create a local name.

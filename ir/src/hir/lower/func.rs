@@ -19,7 +19,9 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LambdaAST<'
                 return (const_err(), erred);
             }
             ty
-        } else { Operand::Const(Constant::Unknown) };
+        } else {
+            Operand::Const(Constant::Unknown)
+        };
         let ret = if let Some(ty) = &self.retty {
             let (ty, erred) = ty.local(glb, loc);
             if erred.is_err() {
@@ -28,13 +30,18 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LambdaAST<'
                 return (const_err(), erred);
             }
             ty
-        } else { Operand::Const(Constant::Unknown) };
-        let inst = glb.alloc.alloc(Inst {
-            name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
-            span: sloc,
-            kind: InstKind::FnType { arg, ret },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        } else {
+            Operand::Const(Constant::Unknown)
+        };
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+                span: sloc,
+                kind: InstKind::FnType { arg, ret },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst);
         let gid = Id(glb
             .alloc

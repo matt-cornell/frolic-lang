@@ -73,10 +73,19 @@ struct LetOpStub<'src, A: Located> {
 impl<'src, A: Located> LetOpStub<'src, A> {
     pub fn into_ast(self, cont: A) -> asts::LetOpAST<'src, A> {
         let Self {
-            kw, op, name, nloc, body
+            kw,
+            op,
+            name,
+            nloc,
+            body,
         } = self;
         asts::LetOpAST {
-            kw, op, name, nloc, body, cont
+            kw,
+            op,
+            name,
+            nloc,
+            body,
+            cont,
         }
     }
 }
@@ -318,23 +327,23 @@ where
             return (val, true);
         }
         match self.current_token() {
-            Some(&Token { kind: TokenKind::Keyword(Keyword::Of), span }) => {
+            Some(&Token {
+                kind: TokenKind::Keyword(Keyword::Of),
+                span,
+            }) => {
                 self.index += 1;
                 let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
-                (A::make_box(asts::AscribeAST {
-                    kw: span,
-                    val, ty,
-                }), err)
-            },
-            Some(&Token { kind: TokenKind::Keyword(Keyword::As), span }) => {
+                (A::make_box(asts::AscribeAST { kw: span, val, ty }), err)
+            }
+            Some(&Token {
+                kind: TokenKind::Keyword(Keyword::As),
+                span,
+            }) => {
                 self.index += 1;
                 let (ty, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
-                (A::make_box(asts::CastAST {
-                    kw: span,
-                    val, ty,
-                }), err)
-            },
-            _ => (val, false)
+                (A::make_box(asts::CastAST { kw: span, val, ty }), err)
+            }
+            _ => (val, false),
         }
     }
 
@@ -763,39 +772,58 @@ where
         }))
     }
 
-    fn parse_let_op(
-        &mut self,
-        out: &mut Vec<A::AstBox>,
-    ) -> (LetOpStub<'src, A::AstBox>, bool) {
-        let Some(Token { kind: TokenKind::LetOp(op), span: kw }) = self.current_token().cloned() else { unreachable!() };
+    fn parse_let_op(&mut self, out: &mut Vec<A::AstBox>) -> (LetOpStub<'src, A::AstBox>, bool) {
+        let Some(Token {
+            kind: TokenKind::LetOp(op),
+            span: kw,
+        }) = self.current_token().cloned()
+        else {
+            unreachable!()
+        };
         let op = op.into();
         if self.eat_comment(out) {
             let nloc = self.curr_loc();
-            return (LetOpStub {
-                kw, op,
-                name: "<error>".into(),
-                nloc,
-                body: A::make_box(asts::ErrorAST { loc: nloc }),
-            }, true);
+            return (
+                LetOpStub {
+                    kw,
+                    op,
+                    name: "<error>".into(),
+                    nloc,
+                    body: A::make_box(asts::ErrorAST { loc: nloc }),
+                },
+                true,
+            );
         }
         self.index += 1;
         let (name, nloc) = match self.parse_ident(true, out) {
             (Some((name, nloc)), false) => (name.into(), nloc),
-            (Some((name, nloc)), true) => return (LetOpStub {
-                kw, op,
-                name: name.into(),
-                nloc,
-                body: A::make_box(asts::ErrorAST { loc: self.curr_loc() }),
-            }, true),
+            (Some((name, nloc)), true) => {
+                return (
+                    LetOpStub {
+                        kw,
+                        op,
+                        name: name.into(),
+                        nloc,
+                        body: A::make_box(asts::ErrorAST {
+                            loc: self.curr_loc(),
+                        }),
+                    },
+                    true,
+                )
+            }
             (None, false) => ("<error>".into(), self.curr_loc()),
             (None, true) => {
                 let nloc = self.curr_loc();
-                return (LetOpStub {
-                    kw, op,
-                    name: "<error>".into(),
-                    nloc,
-                    body: A::make_box(asts::ErrorAST { loc: nloc }),
-                }, true)
+                return (
+                    LetOpStub {
+                        kw,
+                        op,
+                        name: "<error>".into(),
+                        nloc,
+                        body: A::make_box(asts::ErrorAST { loc: nloc }),
+                    },
+                    true,
+                );
             }
         };
         if !matches!(
@@ -810,14 +838,19 @@ where
             if self.report(err) {
                 return (
                     LetOpStub {
-                        kw, op,
-                        name, nloc,
+                        kw,
+                        op,
+                        name,
+                        nloc,
                         body: A::make_box(asts::ErrorAST { loc }),
                     },
                     true,
                 );
             }
-            if let Some(skip) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Equals)) {
+            if let Some(skip) = self.input[self.index..]
+                .iter()
+                .position(|t| t.kind == TokenKind::Special(SpecialChar::Equals))
+            {
                 self.index += skip;
             } else {
                 self.index = self.input.len();
@@ -828,14 +861,17 @@ where
         let (body, erred) = self.parse_expr(true, true, out);
         (
             LetOpStub {
-                kw, op, name, nloc, body,
-            }, erred
+                kw,
+                op,
+                name,
+                nloc,
+                body,
+            },
+            erred,
         )
     }
 
-    fn parse_stmts(
-        &mut self,
-    ) -> (A::AstBox, bool) {
+    fn parse_stmts(&mut self) -> (A::AstBox, bool) {
         enum AstOrStub<'src, A: Located> {
             Ast(A),
             Stub(LetOpStub<'src, A>),
@@ -848,15 +884,17 @@ where
         loop {
             if self.eat_comment(&mut ast_buf) {
                 erred = true;
-                break
+                break;
             }
-            let Some(tok) = self.current_token() else { break };
+            let Some(tok) = self.current_token() else {
+                break;
+            };
             let tok = if check_semicolon {
                 if tok.kind == TokenKind::Special(SpecialChar::Semicolon) {
                     self.index += 1;
                     if self.eat_comment(&mut ast_buf) {
                         erred = true;
-                        break
+                        break;
                     }
                 } else {
                     let mut depth = 1;
@@ -870,7 +908,7 @@ where
                             depth == 0
                         }
                         TokenKind::Special(SpecialChar::Semicolon) => true,
-                        _ => false
+                        _ => false,
                     });
                     if let Some(skip) = skip {
                         self.index += skip;
@@ -878,7 +916,11 @@ where
                         self.index = self.input.len();
                     }
                 }
-                if let Some(tok) = self.current_token() { tok } else { break }
+                if let Some(tok) = self.current_token() {
+                    tok
+                } else {
+                    break;
+                }
             } else {
                 tok
             };
@@ -900,7 +942,7 @@ where
                                 depth == 0
                             }
                             TokenKind::Special(SpecialChar::Semicolon) => true,
-                            _ => false
+                            _ => false,
                         });
                         if let Some(skip) = skip {
                             self.index += skip;
@@ -943,9 +985,13 @@ where
                 Stub(s) => {
                     ast_buf.reverse();
                     let cont = match ast_buf.len() {
-                        0 => A::make_box(asts::NullAST { loc: self.curr_loc() }),
+                        0 => A::make_box(asts::NullAST {
+                            loc: self.curr_loc(),
+                        }),
                         1 => ast_buf.pop().unwrap(),
-                        _ => A::make_box(asts::SeqAST { nodes: std::mem::take(&mut ast_buf).try_into().unwrap() }),
+                        _ => A::make_box(asts::SeqAST {
+                            nodes: std::mem::take(&mut ast_buf).try_into().unwrap(),
+                        }),
                     };
                     ast_buf.push(A::make_box(s.into_ast(cont)));
                 }
@@ -953,9 +999,13 @@ where
         }
         ast_buf.reverse();
         let ast = match ast_buf.len() {
-            0 => A::make_box(asts::NullAST { loc: self.curr_loc() }),
+            0 => A::make_box(asts::NullAST {
+                loc: self.curr_loc(),
+            }),
             1 => ast_buf.pop().unwrap(),
-            _ => A::make_box(asts::SeqAST { nodes: ast_buf.try_into().unwrap() }),
+            _ => A::make_box(asts::SeqAST {
+                nodes: ast_buf.try_into().unwrap(),
+            }),
         };
         (ast, erred)
     }
@@ -1141,7 +1191,11 @@ where
                     let loc = span.merge(inner.loc());
                     (A::make_box(asts::BraceAST { inner, loc }), true)
                 } else {
-                    let end = if let Some(&Token { kind: TokenKind::Close(Delim::Brace), span }) = self.current_token() {
+                    let end = if let Some(&Token {
+                        kind: TokenKind::Close(Delim::Brace),
+                        span,
+                    }) = self.current_token()
+                    {
                         self.index += 1;
                         span
                     } else {
@@ -1150,7 +1204,9 @@ where
                             let loc = span.merge(inner.loc());
                             return (A::make_box(asts::BraceAST { inner, loc }), true);
                         }
-                        let skip = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Close(Delim::Brace));
+                        let skip = self.input[self.index..]
+                            .iter()
+                            .position(|t| t.kind == TokenKind::Close(Delim::Brace));
                         if let Some(skip) = skip {
                             self.index += skip + 1;
                             self.input[self.index - 1].span
@@ -1159,7 +1215,13 @@ where
                             self.curr_loc()
                         }
                     };
-                    (A::make_box(asts::BraceAST { inner, loc: span.merge(end) }), false)
+                    (
+                        A::make_box(asts::BraceAST {
+                            inner,
+                            loc: span.merge(end),
+                        }),
+                        false,
+                    )
                 }
             }
             _ => {

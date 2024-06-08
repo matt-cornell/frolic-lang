@@ -74,7 +74,7 @@ where
         while let Some(idx) = index.checked_sub(1) {
             index = idx;
             match self.input[idx].kind {
-                TokenKind::Comment(_, CommentKind::Ignore) => {},
+                TokenKind::Comment(_, CommentKind::Ignore) => {}
                 TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
                     if !comm.is_empty() {
                         if out.is_empty() {
@@ -441,7 +441,10 @@ where
                     true,
                 );
             }
-            if let Some(skip) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Equals)) {
+            if let Some(skip) = self.input[self.index..]
+                .iter()
+                .position(|t| t.kind == TokenKind::Special(SpecialChar::Equals))
+            {
                 self.index += skip;
             } else {
                 self.index = self.input.len();

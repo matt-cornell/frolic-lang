@@ -1,8 +1,7 @@
 #![allow(clippy::type_complexity)]
 
-use super::*;
 use super::lang::*;
-use crate::common::Intrinsic;
+use super::*;
 use crate::common::list::*;
 use crate::common::symbols::Scopes;
 use bump_scope::allocator_api2::alloc::{Allocator, Global as AGlobal};
@@ -11,10 +10,10 @@ use derivative::Derivative;
 use derive_more::{Deref, DerefMut};
 use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use smallvec::{smallvec, SmallVec};
 
 #[cfg(feature = "rayon")]
 use thread_local::ThreadLocal;
