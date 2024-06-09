@@ -77,8 +77,8 @@ impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalPreContext<'g, 'b, S, F, A>
             report,
             alloc,
             module,
+            global_syms,
             file,
-            global_syms: &*global_syms,
         }
     }
 }

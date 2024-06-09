@@ -1,8 +1,8 @@
 use super::*;
 use std::ops::Bound::*;
 
-impl<'b, 'src, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F>
-    for asts::NamespaceAST<'b, A>
+impl<'b, 'src: 'b, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F>
+    for asts::NamespaceAST<'src, A>
 where
     A::Span: Sync,
 {
@@ -70,7 +70,7 @@ fn visit_all<'b, S: Span, F, C: FnMut(&str, S, GlobalId<'b, S>)>(
                 return Ok(true);
             } else {
                 let res = (glb.report)(HirError::UnboundVariable {
-                    name: glb.alloc.alloc_str(&search).into_ref(),
+                    name: glb.alloc.alloc_str(search).into_ref(),
                     span,
                 });
                 search.truncate(start_len);
@@ -116,7 +116,7 @@ fn visit_all<'b, S: Span, F, C: FnMut(&str, S, GlobalId<'b, S>)>(
                 Ok(false)
             } else {
                 (glb.report)(HirError::UnboundVariable {
-                    name: glb.alloc.alloc_str(&search).into_ref(),
+                    name: glb.alloc.alloc_str(search).into_ref(),
                     span: pat.term_span,
                 })
                 .map(|_| false)
@@ -134,7 +134,7 @@ fn visit_all<'b, S: Span, F, C: FnMut(&str, S, GlobalId<'b, S>)>(
                 Ok(false)
             } else {
                 (glb.report)(HirError::UnboundVariable {
-                    name: glb.alloc.alloc_str(&search).into_ref(),
+                    name: glb.alloc.alloc_str(search).into_ref(),
                     span: *old_span,
                 })
                 .map(|_| false)
@@ -145,7 +145,7 @@ fn visit_all<'b, S: Span, F, C: FnMut(&str, S, GlobalId<'b, S>)>(
     res
 }
 
-impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::UsingAST<'b, S> {
+impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::UsingAST<'src, S> {
     fn local(
         &self,
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
@@ -154,7 +154,7 @@ impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::UsingAST<'b, S> {
         let mut buf = String::new();
         if self.pat.global.is_none() {
             for pre in loc.global_prefixes.clone() {
-                buf.push_str(&pre);
+                buf.push_str(pre);
                 let res = visit_all(&mut buf, &self.pat.segs, glb, true, &mut |name, span, g| {
                     let name = glb.alloc.alloc_str(name).into_ref();
                     let inst = glb
@@ -210,7 +210,7 @@ impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::UsingAST<'b, S> {
         'lookup: {
             if self.pat.global.is_none() {
                 for pre in loc.global_prefixes.clone() {
-                    buf.push_str(&pre);
+                    buf.push_str(pre);
                     let again = visit_all(
                         &mut buf,
                         &self.pat.segs,
