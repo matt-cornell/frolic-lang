@@ -102,6 +102,7 @@ where
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     fn eat_comment(&mut self, out: &mut Vec<A::AstBox>) -> bool {
         loop {
@@ -179,7 +180,11 @@ where
                 }
                 let (id, mspan) = match self.current_token() {
                     Some(&Token {
-                        kind: TokenKind::PreOp(op) | TokenKind::InfOp(op) | TokenKind::LetOp(op) | TokenKind::Ident(op),
+                        kind:
+                            TokenKind::PreOp(op)
+                            | TokenKind::InfOp(op)
+                            | TokenKind::LetOp(op)
+                            | TokenKind::Ident(op),
                         span,
                     }) => (op, span),
                     Some(&Token {
@@ -249,7 +254,10 @@ where
     }
 
     /// Parse a program at the top level.
-    pub fn parse_top_level(&mut self, in_ns: bool, out: &mut Vec<A::AstBox>) -> bool where asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait> {
+    pub fn parse_top_level(&mut self, in_ns: bool, out: &mut Vec<A::AstBox>) -> bool
+    where
+        asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    {
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
                 TokenKind::Close(Delim::Brace) if in_ns => break,
@@ -283,6 +291,13 @@ where
                 }
                 TokenKind::Keyword(Keyword::Namespace) => {
                     let (res, erred) = self.parse_namespace_def(out);
+                    out.push(A::make_box(res));
+                    if erred {
+                        return true;
+                    }
+                }
+                TokenKind::Keyword(Keyword::Using) => {
+                    let (res, erred) = self.parse_using_decl(out);
                     out.push(A::make_box(res));
                     if erred {
                         return true;
@@ -347,6 +362,7 @@ where
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     parser.parse_expr(false, false, &mut vec![]).0
@@ -385,50 +401,92 @@ where
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     let mut nodes = Vec::new();
-    let name = if matches!(input.get(0), Some(Token {kind: TokenKind::Keyword(Keyword::Namespace), ..})) {
+    let name = if matches!(
+        input.get(0),
+        Some(Token {
+            kind: TokenKind::Keyword(Keyword::Namespace),
+            ..
+        })
+    ) {
         parser.index = 1;
         if parser.eat_comment(&mut nodes) {
-            return asts::FrolicAST { file, nodes: vec![], name: None };
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name: None,
+            };
         }
         let (name, erred) = parser.parse_dottedname(&mut nodes);
         if erred {
-            return asts::FrolicAST { file, nodes: vec![], name };
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name,
+            };
         }
         if parser.eat_comment(&mut nodes) {
-            return asts::FrolicAST { file, nodes: vec![], name };
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name,
+            };
         }
         let mut reported = false;
         loop {
             match parser.current_token() {
-                Some(Token { kind: TokenKind::Open(Delim::Brace), .. }) => break None,
-                Some(Token { kind: TokenKind::Special(SpecialChar::Semicolon), .. }) => break name,
-                Some(Token { kind: TokenKind::Keyword(Keyword::Let | Keyword::Namespace), .. }) => {
+                Some(Token {
+                    kind: TokenKind::Open(Delim::Brace),
+                    ..
+                }) => break None,
+                Some(Token {
+                    kind: TokenKind::Special(SpecialChar::Semicolon),
+                    ..
+                }) => break name,
+                Some(Token {
+                    kind: TokenKind::Keyword(Keyword::Let | Keyword::Namespace),
+                    ..
+                }) => {
                     if !reported {
                         let err = parser.exp_found("';' after file module definition");
                         if parser.report(err) {
-                            return asts::FrolicAST { file, nodes: vec![], name };
+                            return asts::FrolicAST {
+                                file,
+                                nodes: vec![],
+                                name,
+                            };
                         }
                     }
-                    break name
+                    break name;
                 }
                 _ => {
                     if !reported {
                         let err = parser.exp_found("';' after file module definition");
                         if parser.report(err) {
-                            return asts::FrolicAST { file, nodes: vec![], name };
+                            return asts::FrolicAST {
+                                file,
+                                nodes: vec![],
+                                name,
+                            };
                         }
                     }
                     reported = true;
                 }
             }
             if parser.eat_comment(&mut nodes) {
-                return asts::FrolicAST { file, nodes: vec![], name };
+                return asts::FrolicAST {
+                    file,
+                    nodes: vec![],
+                    name,
+                };
             }
         }
-    } else {None};
+    } else {
+        None
+    };
     parser.parse_top_level(false, &mut nodes);
     asts::FrolicAST { file, nodes, name }
 }

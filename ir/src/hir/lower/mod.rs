@@ -9,12 +9,12 @@ use derivative::Derivative;
 use derive_more::{Deref, DerefMut};
 use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
+use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
-use std::collections::hash_map::{HashMap, Entry};
+use std::collections::hash_map::{Entry, HashMap};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
-use smallvec::{smallvec, SmallVec};
 
 #[cfg(feature = "rayon")]
 use thread_local::ThreadLocal;
@@ -154,7 +154,12 @@ impl<'b> LocalInGlobalContext<'b> {
         ret
     }
 
-    pub fn predef_ns<'src, S: Span, V: Deref<Target = [(Cow<'src, str>, S)]>, F: Clone>(&mut self, name: &DottedName<'src, S, V>, doc: &'b [u8], glb: &mut GlobalPreContext<'_, 'b, S, F>) -> LowerResult {
+    pub fn predef_ns<'src, S: Span, V: Deref<Target = [(Cow<'src, str>, S)]>, F: Clone>(
+        &mut self,
+        name: &DottedName<'src, S, V>,
+        doc: &'b [u8],
+        glb: &mut GlobalPreContext<'_, 'b, S, F>,
+    ) -> LowerResult {
         if name.segs.is_empty() {
             return Ok(());
         };
@@ -162,8 +167,7 @@ impl<'b> LocalInGlobalContext<'b> {
             .alloc
             .alloc_fmt(format_args!("{}.{}", self.scope_name, name))
             .into_ref();
-        name
-            .segs
+        name.segs
             .iter()
             .enumerate()
             .try_fold(self.scope_name.len(), |mut len, (n, (seg, _))| {
@@ -178,19 +182,17 @@ impl<'b> LocalInGlobalContext<'b> {
                     Entry::Occupied(e) => {
                         let (file, Id(old @ &Global { span, .. })) = e.get();
                         if old
-                                .as_alias()
-                                .map_or(true, |a| a != Operand::Const(Constant::Namespace(name)))
+                            .as_alias()
+                            .map_or(true, |a| a != Operand::Const(Constant::Namespace(name)))
                         {
-                            (glb.report)(
-                                HirError::DuplicateDefinition {
-                                    name,
-                                    span: dnloc,
-                                    prev: PrevDef {
-                                        span,
-                                        file: file.clone(),
-                                    },
+                            (glb.report)(HirError::DuplicateDefinition {
+                                name,
+                                span: dnloc,
+                                prev: PrevDef {
+                                    span,
+                                    file: file.clone(),
                                 },
-                            )?;
+                            })?;
                         }
                     }
                     Entry::Vacant(e) => {
@@ -207,8 +209,7 @@ impl<'b> LocalInGlobalContext<'b> {
                             })
                             .into_ref();
                         glb.module.push_back(gid);
-                        let term =
-                            Terminator::Return(Operand::Const(Constant::Namespace(name)));
+                        let term = Terminator::Return(Operand::Const(Constant::Namespace(name)));
                         let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
                         gid.push_back(blk);
                         blk.term.set(term);

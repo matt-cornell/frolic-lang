@@ -1,6 +1,10 @@
 use super::*;
 
-impl<'b, 'src, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F> for asts::NamespaceAST<'b, A> where A::Span: Sync {
+impl<'b, 'src, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F>
+    for asts::NamespaceAST<'b, A>
+where
+    A::Span: Sync,
+{
     fn predef_global(
         &self,
         glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
@@ -9,7 +13,10 @@ impl<'b, 'src, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F> for 
         loc.predef_ns(&self.name, glb.intern_cow_slice(&self.doc), glb)?;
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{}", self.name);
-        let erred = self.nodes.iter().try_for_each(|n| n.predef_global(glb, loc));
+        let erred = self
+            .nodes
+            .iter()
+            .try_for_each(|n| n.predef_global(glb, loc));
         loc.scope_name.truncate(old_len);
         erred
     }
@@ -33,8 +40,12 @@ impl<'b, 'src, F: Clone + Sync, A: ToHir<'b, F> + Send + Sync> ToHir<'b, F> for 
         use rayon::prelude::*;
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{}", self.name);
-        let erred = self.nodes.par_iter().try_for_each_init(|| loc.clone(), |loc, n| n.global_sync(glb, loc));
+        let erred = self
+            .nodes
+            .par_iter()
+            .try_for_each_init(|| loc.clone(), |loc, n| n.global_sync(glb, loc));
         loc.scope_name.truncate(old_len);
         erred
     }
 }
+impl<'b, 'src, F: Clone, S: Span> ToHir<'b, F> for asts::UsingAST<'b, S> {}

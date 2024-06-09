@@ -1,7 +1,7 @@
 use super::*;
 use crate::dottedname::DottedName;
-use std::fmt::{self, Debug, Formatter};
 use derivative::Derivative;
+use std::fmt::{self, Debug, Formatter};
 
 pub mod defs;
 pub mod flow;

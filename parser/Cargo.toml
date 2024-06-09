@@ -17,6 +17,7 @@ smallvec.workspace = true
 strum = { version = "0.26.2", features = ["derive"] }
 thiserror.workspace = true
 unicode-ident = "1.0.12"
+vec1.workspace = true
 
 [features]
 rayon = ["dep:rayon"]

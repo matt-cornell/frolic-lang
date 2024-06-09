@@ -1,6 +1,7 @@
 use super::*;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
+use vec1::Vec1;
 
 impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
 where
@@ -24,6 +25,7 @@ where
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     pub fn parse_dottedname(
         &mut self,
@@ -74,7 +76,7 @@ where
         while let Some(idx) = index.checked_sub(1) {
             index = idx;
             match self.input[idx].kind {
-                TokenKind::Comment(_, CommentKind::Ignore) => {},
+                TokenKind::Comment(_, CommentKind::Ignore) => {}
                 TokenKind::Comment(ref comm, CommentKind::OuterDoc) => {
                     if !comm.is_empty() {
                         if out.is_empty() {
@@ -91,9 +93,11 @@ where
         }
         if inner {
             loop {
-                let Some(Token { kind, ..}) = self.current_token() else { break };
+                let Some(Token { kind, .. }) = self.current_token() else {
+                    break;
+                };
                 match kind {
-                    TokenKind::Comment(_, CommentKind::Ignore) => {},
+                    TokenKind::Comment(_, CommentKind::Ignore) => {}
                     TokenKind::Comment(ref comm, CommentKind::InnerDoc) => {
                         if !comm.is_empty() {
                             if out.is_empty() {
@@ -149,7 +153,10 @@ where
                         asts::LetAST {
                             kw,
                             doc,
-                            name: name.map_or(DottedName::local("<error>", self.curr_loc()), |(name, span)| DottedName::local(name, span)),
+                            name: name.map_or(
+                                DottedName::local("<error>", self.curr_loc()),
+                                |(name, span)| DottedName::local(name, span),
+                            ),
                             params: smallvec![],
                             ret: None,
                             body: A::make_box(asts::ErrorAST {
@@ -461,7 +468,10 @@ where
                     true,
                 );
             }
-            if let Some(skip) = self.input[self.index..].iter().position(|t| t.kind == TokenKind::Special(SpecialChar::Equals)) {
+            if let Some(skip) = self.input[self.index..]
+                .iter()
+                .position(|t| t.kind == TokenKind::Special(SpecialChar::Equals))
+            {
                 self.index += skip;
             } else {
                 self.index = self.input.len();
@@ -482,36 +492,52 @@ where
             err,
         )
     }
-    
+
     pub fn parse_namespace_def(
         &mut self,
         out: &mut Vec<A::AstBox>,
-    ) -> (asts::NamespaceAST<'src, A::AstBox>, bool) where 
-    asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait> {
+    ) -> (asts::NamespaceAST<'src, A::AstBox>, bool)
+    where
+        asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    {
         let kw = self.current_token().unwrap().span;
         let doc = self.get_docs(true);
         self.index += 1;
         let (name, erred) = self.parse_dottedname(out);
         let name = name.unwrap_or_else(|| DottedName::local("<error>", self.curr_loc()));
         if erred {
-            return (asts::NamespaceAST {
-                name, kw, doc,
-                body: self.curr_loc(),
-                nodes: vec![]
-            }, true);
+            return (
+                asts::NamespaceAST {
+                    name,
+                    kw,
+                    doc,
+                    body: self.curr_loc(),
+                    nodes: vec![],
+                },
+                true,
+            );
         }
-        let start = if let Some(&Token { kind: TokenKind::Open(Delim::Brace), span }) = self.current_token() {
+        let start = if let Some(&Token {
+            kind: TokenKind::Open(Delim::Brace),
+            span,
+        }) = self.current_token()
+        {
             self.index += 1;
             span
         } else {
             let err = self.exp_found("namespace body");
             let body = self.curr_loc();
             if self.report(err) {
-                return (asts::NamespaceAST {
-                    name, kw,
-                    body, doc,
-                    nodes: vec![]
-                }, true)
+                return (
+                    asts::NamespaceAST {
+                        name,
+                        kw,
+                        body,
+                        doc,
+                        nodes: vec![],
+                    },
+                    true,
+                );
             } else {
                 body
             }
@@ -519,31 +545,257 @@ where
         let mut nodes = Vec::<A::AstBox>::new();
         let erred = self.parse_top_level(true, &mut nodes);
         if erred {
-            return (asts::NamespaceAST {
-                name, kw, doc,
-                body: nodes.last().map_or(start, |end| start.merge(end.loc())),
-                nodes
-            }, true);
+            return (
+                asts::NamespaceAST {
+                    name,
+                    kw,
+                    doc,
+                    body: nodes.last().map_or(start, |end| start.merge(end.loc())),
+                    nodes,
+                },
+                true,
+            );
         }
-        let end = if let Some(&Token { kind: TokenKind::Close(Delim::Brace), span }) = self.current_token() {
+        let end = if let Some(&Token {
+            kind: TokenKind::Close(Delim::Brace),
+            span,
+        }) = self.current_token()
+        {
             self.index += 1;
             span
         } else {
             let err = self.exp_found("closing '}'");
             let end = self.curr_loc();
             if self.report(err) {
-                return (asts::NamespaceAST {
-                    name, kw, doc,
-                    body: start.merge(end),
-                    nodes
-                }, true)
+                return (
+                    asts::NamespaceAST {
+                        name,
+                        kw,
+                        doc,
+                        body: start.merge(end),
+                        nodes,
+                    },
+                    true,
+                );
             } else {
                 end
             }
         };
-        (asts::NamespaceAST {
-            name, kw, body: start.merge(end),
-            doc, nodes
-        }, false)
+        (
+            asts::NamespaceAST {
+                name,
+                kw,
+                body: start.merge(end),
+                doc,
+                nodes,
+            },
+            false,
+        )
+    }
+
+    pub fn parse_using_decl(
+        &mut self,
+        out: &mut Vec<A::AstBox>,
+    ) -> (asts::UsingAST<'src, S>, bool) {
+        let kw = self.current_token().unwrap().span;
+        self.index += 1;
+        let (pat, erred) = self.parse_glob_pattern(out);
+        (asts::UsingAST { kw, pat }, erred)
+    }
+
+    fn parse_glob_term(
+        &mut self,
+        out: &mut Vec<A::AstBox>,
+    ) -> (Option<(GlobTerm<'src, S>, S)>, bool) {
+        match self.current_token() {
+            Some(&Token {
+                kind: TokenKind::AmbigOp(AmbigOp::Star),
+                span,
+            }) => {
+                self.index += 1;
+                (Some((GlobTerm::Star, span)), false)
+            }
+            Some(&Token {
+                kind: TokenKind::Open(Delim::Brace),
+                span: start,
+            }) => {
+                self.index += 1;
+                let mut globs = Vec::new();
+                let mut check_comma = false;
+                let mut erred = loop {
+                    match self.current_token() {
+                        Some(Token {
+                            kind: TokenKind::Close(Delim::Brace),
+                            ..
+                        }) => break false,
+                        Some(Token {
+                            kind: TokenKind::Special(SpecialChar::Comma),
+                            ..
+                        }) if check_comma => self.index += 1,
+                        _ => {
+                            if check_comma {
+                                let err = self.exp_found("',' between glob options");
+                                if self.report(err) {
+                                    break true;
+                                }
+                            }
+                        }
+                    }
+                    check_comma = true;
+                    let (glob, erred) = self.parse_glob_list(out);
+                    if let Some(g) = glob {
+                        globs.push(g);
+                    } else {
+                        break erred;
+                    }
+                    if erred {
+                        break true;
+                    }
+                };
+                let span = if let Some(&Token {
+                    kind: TokenKind::Close(Delim::Brace),
+                    span,
+                }) = self.current_token()
+                {
+                    self.index += 1;
+                    start.merge(span)
+                } else {
+                    erred = erred || {
+                        let err = self.exp_found("closing '}'");
+                        self.report(err)
+                    };
+                    start
+                };
+                if let Ok(vec) = Vec1::try_from_vec(globs) {
+                    (Some((GlobTerm::Group(vec), span)), erred)
+                } else {
+                    erred = erred || self.report(ParseASTError::EmptyGlobGroup { span });
+                    (
+                        Some((GlobTerm::Ident(Cow::Borrowed("<error>")), span)),
+                        erred,
+                    )
+                }
+            }
+            _ => {
+                let (id, erred) = self.parse_ident(false, out);
+                if let Some((old_name, old_span)) = id {
+                    if erred
+                        || !matches!(
+                            self.current_token(),
+                            Some(Token {
+                                kind: TokenKind::Keyword(Keyword::As),
+                                ..
+                            })
+                        )
+                    {
+                        return (
+                            Some((GlobTerm::Ident(Cow::Borrowed(old_name)), old_span)),
+                            erred,
+                        );
+                    }
+                    self.index += 1;
+                    let (id, erred) = self.parse_ident(true, out);
+                    if let Some((new_name, new_span)) = id {
+                        (
+                            Some((
+                                GlobTerm::Alias {
+                                    old_name: Cow::Borrowed(old_name),
+                                    old_span,
+                                    new_name: Cow::Borrowed(new_name),
+                                },
+                                old_span.merge(new_span),
+                            )),
+                            erred,
+                        )
+                    } else {
+                        (
+                            Some((GlobTerm::Ident(Cow::Borrowed(old_name)), old_span)),
+                            erred,
+                        )
+                    }
+                } else {
+                    (None, erred)
+                }
+            }
+        }
+    }
+
+    fn parse_glob_list(&mut self, out: &mut Vec<A::AstBox>) -> (Option<GlobList<'src, S>>, bool) {
+        let (mut last, mut erred) = self.parse_glob_term(out);
+        if last.is_none() || erred {
+            return (
+                last.map(|(term, term_span)| GlobList {
+                    term,
+                    term_span,
+                    idents: Vec::new(),
+                }),
+                erred,
+            );
+        }
+        let mut idents = Vec::new();
+        #[allow(unused_assignments)] // false positive
+        let mut scratch = None;
+        while matches!(
+            self.current_token(),
+            Some(Token {
+                kind: TokenKind::Special(SpecialChar::Dot),
+                ..
+            })
+        ) {
+            self.index += 1;
+            (scratch, erred) = self.parse_glob_term(out);
+            if scratch.is_some() {
+                let Some((GlobTerm::Ident(id), span)) = std::mem::replace(&mut last, scratch)
+                else {
+                    unreachable!()
+                };
+                idents.push((id, span));
+            } else {
+                break;
+            }
+            if erred || !matches!(last, Some((GlobTerm::Ident(_), _))) {
+                break;
+            }
+        }
+        let (term, term_span) = last.unwrap();
+        (
+            Some(GlobList {
+                term,
+                term_span,
+                idents,
+            }),
+            erred,
+        )
+    }
+
+    fn parse_glob_pattern(&mut self, out: &mut Vec<A::AstBox>) -> (GlobPattern<'src, S>, bool) {
+        let global = if let Some(&Token {
+            kind: TokenKind::Special(SpecialChar::Dot),
+            span,
+        }) = self.current_token()
+        {
+            self.index += 1;
+            Some(span)
+        } else {
+            None
+        };
+        let (segs, erred) = self.parse_glob_list(out);
+        let (segs, erred) = segs.map_or_else(
+            || {
+                (
+                    GlobList {
+                        term: GlobTerm::Star,
+                        term_span: self.curr_loc(),
+                        idents: Vec::new(),
+                    },
+                    erred || {
+                        let err = self.exp_found("glob pattern");
+                        self.report(err)
+                    },
+                )
+            },
+            |s| (s, erred),
+        );
+        (GlobPattern { global, segs }, erred)
     }
 }

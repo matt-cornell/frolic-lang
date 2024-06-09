@@ -46,14 +46,13 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 kind: TokenKind::Keyword(Keyword::Let),
                 span: S::new(start, 3),
             });
-        }
-        else {
+        } else {
             self.index += len;
             self.tokens.push(Token {
                 kind: TokenKind::LetOp(unsafe {
                     std::str::from_utf8_unchecked(&self.input[start..self.index])
                 }),
-                span: S::new(start, len + 3)
+                span: S::new(start, len + 3),
             });
         }
     }

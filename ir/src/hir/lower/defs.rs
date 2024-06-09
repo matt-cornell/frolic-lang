@@ -8,10 +8,19 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
         loc: &mut LocalInLocalContext<'b, Self::Span>,
     ) -> (Operand<'b, Self::Span>, LowerResult) {
         let [(ref self_name, nloc)] = self.name.segs[..] else {
-            return (const_err(), (glb.report)(HirIce::InvalidLocalName {
-                name: glb.alloc.alloc_fmt(format_args!("{}", self.name)).into_ref(),
-                span: self.name.loc(),
-            }.into()))
+            return (
+                const_err(),
+                (glb.report)(
+                    HirIce::InvalidLocalName {
+                        name: glb
+                            .alloc
+                            .alloc_fmt(format_args!("{}", self.name))
+                            .into_ref(),
+                        span: self.name.loc(),
+                    }
+                    .into(),
+                ),
+            );
         };
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{self_name}");
@@ -22,9 +31,18 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 let gid = glb
                     .alloc
                     .alloc(Global {
-                        name: if i == 0 {glb.alloc.alloc_str(&loc.scope_name).into_ref()} else {glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref()},
+                        name: if i == 0 {
+                            glb.alloc.alloc_str(&loc.scope_name).into_ref()
+                        } else {
+                            glb.alloc
+                                .alloc_fmt(format_args!("{}.#{i}", loc.scope_name))
+                                .into_ref()
+                        },
                         span: nloc,
-                        captures: stack.last().copied().or(loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed)),
+                        captures: stack
+                            .last()
+                            .copied()
+                            .or(loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed)),
                         is_func: true,
                         docs: &[],
                         blocks: LinkedList::NEW,
@@ -40,34 +58,49 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
             inner.push_back(blk);
             let old_ins = std::mem::replace(&mut loc.insert, Id(blk));
             for ([caller, callee], param) in stack.array_windows().zip(rest) {
-                let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
+                let blk = glb
+                    .alloc
+                    .alloc(Block::returning("entry", Operand::Global(Id(callee))))
+                    .into_ref();
                 caller.push_back(blk);
                 let name = glb.intern_cow_str(&param.name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: param.loc,
-                    kind: InstKind::ArgOf { func: Id(caller) },
-                    link: LinkedListLink::NEW,
-                }).into_ref();
+                let inst = glb
+                    .alloc
+                    .alloc(Inst {
+                        name,
+                        span: param.loc,
+                        kind: InstKind::ArgOf { func: Id(caller) },
+                        link: LinkedListLink::NEW,
+                    })
+                    .into_ref();
                 loc.insert.0.push_back(inst);
                 loc.locals.insert(name, Id(inst));
             }
             {
                 let name = glb.intern_cow_str(&last.name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: last.loc,
-                    kind: InstKind::ArgOf { func: Id(inner) },
-                    link: LinkedListLink::NEW,
-                }).into_ref();
+                let inst = glb
+                    .alloc
+                    .alloc(Inst {
+                        name,
+                        span: last.loc,
+                        kind: InstKind::ArgOf { func: Id(inner) },
+                        link: LinkedListLink::NEW,
+                    })
+                    .into_ref();
                 loc.insert.0.push_back(inst);
                 loc.locals.insert(name, Id(inst));
             }
             let self_val = {
                 let name = glb.intern_cow_str(self_name);
-                let inst = glb.alloc.alloc(Inst {
-                    name, span: nloc,
-                    kind: InstKind::Bind(Operand::Global(Id(stack[0]))),
-                    link: LinkedListLink::NEW,
-                }).into_ref();
+                let inst = glb
+                    .alloc
+                    .alloc(Inst {
+                        name,
+                        span: nloc,
+                        kind: InstKind::Bind(Operand::Global(Id(stack[0]))),
+                        link: LinkedListLink::NEW,
+                    })
+                    .into_ref();
                 old_ins.0.push_back(inst);
                 loc.locals.insert(name, Id(inst));
                 inst
@@ -79,11 +112,15 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
         } else {
             let (val, erred) = self.body.local(glb, loc);
             let name = glb.intern_cow_str(self_name);
-            let inst = glb.alloc.alloc(Inst {
-                name, span: nloc,
-                kind: InstKind::Bind(val),
-                link: LinkedListLink::NEW,
-            }).into_ref();
+            let inst = glb
+                .alloc
+                .alloc(Inst {
+                    name,
+                    span: nloc,
+                    kind: InstKind::Bind(val),
+                    link: LinkedListLink::NEW,
+                })
+                .into_ref();
             loc.insert.0.push_back(inst);
             loc.locals.insert(name, Id(inst));
             (inst, erred)
@@ -124,16 +161,14 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 .as_alias()
                                 .map_or(true, |a| a != Operand::Const(Constant::Namespace(name)))
                         {
-                            (glb.report)(
-                                HirError::DuplicateDefinition {
-                                    name,
-                                    span: dnloc,
-                                    prev: PrevDef {
-                                        span,
-                                        file: file.clone(),
-                                    },
+                            (glb.report)(HirError::DuplicateDefinition {
+                                name,
+                                span: dnloc,
+                                prev: PrevDef {
+                                    span,
+                                    file: file.clone(),
                                 },
-                            )?;
+                            })?;
                         }
                     }
                     Entry::Vacant(e) => {
@@ -190,7 +225,10 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                     let gid = glb
                         .alloc
                         .alloc(Global {
-                            name: glb.alloc.alloc_fmt(format_args!("{}.#{i}", loc.scope_name)).into_ref(),
+                            name: glb
+                                .alloc
+                                .alloc_fmt(format_args!("{}.#{i}", loc.scope_name))
+                                .into_ref(),
                             span: dnloc,
                             captures: stack.last().copied(),
                             is_func: true,
@@ -205,7 +243,10 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 let inner = glb
                     .alloc
                     .alloc(Global {
-                        name: glb.alloc.alloc_fmt(format_args!("{}.#{}", loc.scope_name, rest.len() + 1)).into_ref(),
+                        name: glb
+                            .alloc
+                            .alloc_fmt(format_args!("{}.#{}", loc.scope_name, rest.len() + 1))
+                            .into_ref(),
                         span: dnloc,
                         captures: stack.last().copied(),
                         is_func: true,
@@ -220,24 +261,35 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 inner.push_back(blk);
                 loc.in_local(Id(blk), |loc| {
                     for ([caller, callee], param) in stack.array_windows().zip(without_last) {
-                        let blk = glb.alloc.alloc(Block::returning("entry", Operand::Global(Id(callee)))).into_ref();
+                        let blk = glb
+                            .alloc
+                            .alloc(Block::returning("entry", Operand::Global(Id(callee))))
+                            .into_ref();
                         caller.push_back(blk);
                         let name = glb.intern_cow_str(&param.name);
-                        let inst = glb.alloc.alloc(Inst {
-                            name, span: param.loc,
-                            kind: InstKind::ArgOf { func: Id(caller) },
-                            link: LinkedListLink::NEW,
-                        }).into_ref();
+                        let inst = glb
+                            .alloc
+                            .alloc(Inst {
+                                name,
+                                span: param.loc,
+                                kind: InstKind::ArgOf { func: Id(caller) },
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
                         loc.insert.0.push_back(inst);
                         loc.locals.insert(name, Id(inst));
                     }
                     {
                         let name = glb.intern_cow_str(&last.name);
-                        let inst = glb.alloc.alloc(Inst {
-                            name, span: last.loc,
-                            kind: InstKind::ArgOf { func: Id(inner) },
-                            link: LinkedListLink::NEW,
-                        }).into_ref();
+                        let inst = glb
+                            .alloc
+                            .alloc(Inst {
+                                name,
+                                span: last.loc,
+                                kind: InstKind::ArgOf { func: Id(inner) },
+                                link: LinkedListLink::NEW,
+                            })
+                            .into_ref();
                         loc.insert.0.push_back(inst);
                         loc.locals.insert(name, Id(inst));
                     }
@@ -294,26 +346,32 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
             return (const_err(), erred);
         }
         let _ = write!(loc.scope_name, ".#cont");
-        let cont = glb.alloc.alloc(Global {
-            name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
-            span: self.nloc,
-            is_func: true,
-            docs: &[],
-            captures: loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed),
-            blocks: LinkedList::NEW,
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let cont = glb
+            .alloc
+            .alloc(Global {
+                name: glb.alloc.alloc_str(&loc.scope_name).into_ref(),
+                span: self.nloc,
+                is_func: true,
+                docs: &[],
+                captures: loc.insert.0.parent(std::sync::atomic::Ordering::Relaxed),
+                blocks: LinkedList::NEW,
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         glb.module.push_back(cont);
         let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
         cont.push_back(blk);
         let old_blk = std::mem::replace(&mut loc.insert, Id(blk));
         let arg_name = glb.intern_cow_str(&self.name);
-        let inst = glb.alloc.alloc(Inst {
-            name: arg_name,
-            span: self.nloc,
-            kind: InstKind::ArgOf { func: Id(cont) },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let inst = glb
+            .alloc
+            .alloc(Inst {
+                name: arg_name,
+                span: self.nloc,
+                kind: InstKind::ArgOf { func: Id(cont) },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         blk.push_back(inst);
         loc.locals.push_new_scope();
         loc.locals.insert(arg_name, Id(inst));
@@ -346,19 +404,28 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
             });
             (const_err(), erred)
         };
-        let inst1 = glb.alloc.alloc(Inst {
-            name: "",
-            span: self.nloc,
-            kind: InstKind::Call { func, arg: val },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let inst1 = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.nloc,
+                kind: InstKind::Call { func, arg: val },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst1);
-        let inst2 = glb.alloc.alloc(Inst {
-            name: "",
-            span: self.nloc,
-            kind: InstKind::Call { func: Operand::Inst(Id(inst1)), arg: Operand::Global(Id(cont)) },
-            link: LinkedListLink::NEW,
-        }).into_ref();
+        let inst2 = glb
+            .alloc
+            .alloc(Inst {
+                name: "",
+                span: self.nloc,
+                kind: InstKind::Call {
+                    func: Operand::Inst(Id(inst1)),
+                    arg: Operand::Global(Id(cont)),
+                },
+                link: LinkedListLink::NEW,
+            })
+            .into_ref();
         loc.insert.0.push_back(inst2);
         (Operand::Inst(Id(inst2)), erred)
     }

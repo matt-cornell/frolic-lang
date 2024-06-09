@@ -180,10 +180,7 @@ pub enum Constant<'b> {
 }
 
 #[derive(Derivative, Default)]
-#[derivative(
-    Debug(bound = ""),
-    PartialEq(bound = "")
-)]
+#[derivative(Debug(bound = ""), PartialEq(bound = ""))]
 pub enum Terminator<'b, S> {
     #[default]
     Unreachable,
@@ -205,10 +202,7 @@ impl<S> Clone for Terminator<'_, S> {
 impl<S> Copy for Terminator<'_, S> {}
 
 #[derive(Derivative)]
-#[derivative(
-    Debug(bound = ""),
-    PartialEq(bound = "")
-)]
+#[derivative(Debug(bound = ""), PartialEq(bound = ""))]
 pub enum Operand<'b, S> {
     Const(Constant<'b>),
     Inst(InstId<'b, S>),
@@ -223,10 +217,7 @@ impl<S> Copy for Operand<'_, S> {}
 
 /// A kind of instruction.
 #[derive(Derivative)]
-#[derivative(
-    Debug(bound = ""),
-    PartialEq(bound = "")
-)]
+#[derivative(Debug(bound = ""), PartialEq(bound = ""))]
 pub enum InstKind<'b, S> {
     /// Call `func` with `arg`.
     Call {

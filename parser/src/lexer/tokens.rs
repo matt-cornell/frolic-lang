@@ -1,7 +1,7 @@
 use super::*;
+use derivative::Derivative;
 use std::fmt::{self, Debug, Formatter};
 use strum::*;
-use derivative::Derivative;
 
 fn bstr_debug<S: AsRef<[u8]>>(bytes: &S, f: &mut Formatter<'_>) -> fmt::Result {
     Debug::fmt(bstr::BStr::new(bytes), f)
@@ -40,6 +40,7 @@ pub enum Keyword {
     Then,
     Else,
     Namespace,
+    Using,
 }
 impl Keyword {
     pub fn as_str(self) -> &'static str {
@@ -68,6 +69,7 @@ pub enum SpecialChar {
     Backslash,
     Equals,
     Dot,
+    Comma,
     /// this is the `->` sequence
     Arrow,
 }
@@ -107,7 +109,10 @@ impl AmbigOp {
 pub enum TokenKind<'src> {
     /// A comment. Will be `Borrowed` if it's a single comment, or `Owned` if the combination of
     /// multiple.
-    Comment(#[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>, CommentKind),
+    Comment(
+        #[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>,
+        CommentKind,
+    ),
     /// An identifier-- an XID start character followed by 0 or more XID continues
     Ident(&'src str),
     Keyword(Keyword),
