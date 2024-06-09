@@ -406,7 +406,7 @@ where
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     let mut nodes = Vec::new();
     let name = if matches!(
-        input.get(0),
+        input.first(),
         Some(Token {
             kind: TokenKind::Keyword(Keyword::Namespace),
             ..

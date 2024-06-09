@@ -1,6 +1,6 @@
-#![feature(array_windows, iter_intersperse)]
+#![feature(array_windows)]
 use atomic_ref::AtomicRef;
-use std::fmt::{self, Debug, Formatter, Write};
+use std::fmt::{self, Debug, Formatter};
 use std::sync::atomic::Ordering;
 
 pub mod common;

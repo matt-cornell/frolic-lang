@@ -8,13 +8,6 @@ use frolic_utils::synccell::SyncCell;
 
 mod disp;
 
-fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
-    if let Some(ptr) = val {
-        write!(f, "{ptr:p}")
-    } else {
-        f.write_str("null")
-    }
-}
 fn debug_bstr<T: AsRef<[u8]>>(val: &T, f: &mut Formatter<'_>) -> fmt::Result {
     Debug::fmt(bstr::BStr::new(val), f)
 }
