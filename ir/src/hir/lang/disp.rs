@@ -126,7 +126,7 @@ impl<S> Display for Global<'_, S> {
             writeln!(ind, "{}", bstr::BStr::new(self.docs))?;
         }
         if let Some(op) = self.as_alias() {
-            writeln!(f, "let {} = {op};", Id(self))
+            write!(f, "let {} = {op};", Id(self))
         } else {
             writeln!(f, "let {} {{", Id(self))?;
             let mut ind = indenter::indented(f).with_str("  ");
@@ -140,8 +140,8 @@ impl<S> Display for Global<'_, S> {
 impl<S> Display for Module<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "# module {}", self.name)?;
+        writeln!(f)?;
         for glb in self.globals.iter() {
-            writeln!(f)?;
             writeln!(f, "{glb}")?;
         }
         Ok(())

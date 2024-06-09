@@ -642,7 +642,7 @@ where
                         }
                     }
                     check_comma = true;
-                    let (glob, erred) = self.parse_glob_list(out);
+                    let (glob, erred) = self.parse_glob_list(false, out);
                     if let Some(g) = glob {
                         globs.push(g);
                     } else {
@@ -720,7 +720,37 @@ where
         }
     }
 
-    fn parse_glob_list(&mut self, out: &mut Vec<A::AstBox>) -> (Option<GlobList<'src, S>>, bool) {
+    fn parse_glob_list(
+        &mut self,
+        non_empty: bool,
+        out: &mut Vec<A::AstBox>,
+    ) -> (Option<GlobList<'src, S>>, bool) {
+        let mut idents = if non_empty {
+            let (start, erred) = self.parse_ident(true, out);
+            if erred {
+                return (None, erred);
+            }
+            if matches!(
+                self.current_token(),
+                Some(Token {
+                    kind: TokenKind::Special(SpecialChar::Dot),
+                    ..
+                })
+            ) {
+                self.index += 1;
+            } else {
+                let err = self.exp_found("'.' separator");
+                if self.report(err) {
+                    return (None, erred);
+                }
+            }
+            start
+                .map(|(i, s)| (Cow::Borrowed(i), s))
+                .into_iter()
+                .collect()
+        } else {
+            Vec::new()
+        };
         let (mut last, mut erred) = self.parse_glob_term(out);
         if last.is_none() || erred {
             return (
@@ -732,7 +762,6 @@ where
                 erred,
             );
         }
-        let mut idents = Vec::new();
         #[allow(unused_assignments)] // false positive
         let mut scratch = None;
         while matches!(
@@ -779,7 +808,7 @@ where
         } else {
             None
         };
-        let (segs, erred) = self.parse_glob_list(out);
+        let (segs, erred) = self.parse_glob_list(true, out);
         let (segs, erred) = segs.map_or_else(
             || {
                 (

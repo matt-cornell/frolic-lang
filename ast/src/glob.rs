@@ -27,7 +27,7 @@ impl<S: Span> Located for GlobList<'_, S> {
     fn loc(&self) -> Self::Span {
         self.idents
             .first()
-            .map_or(self.term_span, |i| i.1.merge(self.term_span))
+            .map_or(self.term_span, |s| s.1.merge(self.term_span))
     }
 }
 

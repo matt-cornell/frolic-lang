@@ -112,4 +112,4 @@ impl<S: Debug + Span, F: Debug + SourceCode> Diagnostic for PrevDef<S, F> {
 #[error("Error reporter requested early termination")]
 pub struct EarlyReturn;
 
-pub type LowerResult = Result<(), EarlyReturn>;
+pub type LowerResult<T = ()> = Result<T, EarlyReturn>;

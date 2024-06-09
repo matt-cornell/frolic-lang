@@ -487,6 +487,9 @@ where
     } else {
         None
     };
+    if name.is_none() {
+        parser.index = 0;
+    }
     parser.parse_top_level(false, &mut nodes);
     asts::FrolicAST { file, nodes, name }
 }

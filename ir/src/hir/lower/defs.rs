@@ -1,5 +1,4 @@
 use super::*;
-use std::collections::hash_map::Entry;
 
 impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetAST<'src, A> {
     fn local(

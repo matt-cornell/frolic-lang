@@ -11,7 +11,7 @@ use frolic_ast::prelude::*;
 use frolic_utils::prelude::*;
 use smallvec::{smallvec, SmallVec};
 use std::borrow::Cow;
-use std::collections::hash_map::{Entry, HashMap};
+use std::collections::btree_map::{BTreeMap, Entry};
 use std::fmt::Write;
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
@@ -43,7 +43,7 @@ pub struct GlobalPreContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> 
     pub report: &'g dyn Fn(HirError<'b, S, F>) -> LowerResult,
     pub alloc: &'g BumpScope<'b, A>,
     pub module: &'b Module<'b, S>,
-    pub global_syms: &'g mut HashMap<&'b str, (F, GlobalId<'b, S>)>,
+    pub global_syms: &'g mut BTreeMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
 impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalPreContext<'g, 'b, S, F, A> {
@@ -61,6 +61,26 @@ impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalPreContext<'g, 'b, S, F, A>
             Cow::Owned(s) => self.alloc.alloc_slice_copy(s).into_ref(),
         }
     }
+    pub fn as_context(&self) -> GlobalContext<'_, 'b, S, F, A>
+    where
+        F: Clone,
+    {
+        let Self {
+            report,
+            alloc,
+            module,
+            global_syms,
+            ..
+        } = self;
+        let file = self.file.clone();
+        GlobalContext {
+            report,
+            alloc,
+            module,
+            file,
+            global_syms: &*global_syms,
+        }
+    }
 }
 
 #[derive(Derivative)]
@@ -70,7 +90,7 @@ pub struct GlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone = AGlobal> {
     pub report: &'g dyn Fn(HirError<'b, S, F>) -> LowerResult,
     pub alloc: &'g BumpScope<'b, A>,
     pub module: &'b Module<'b, S>,
-    pub global_syms: &'g HashMap<&'b str, (F, GlobalId<'b, S>)>,
+    pub global_syms: &'g BTreeMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
 impl<'g, 'b, S: Span, F, A: Allocator + Clone> GlobalContext<'g, 'b, S, F, A> {
@@ -99,7 +119,7 @@ pub struct SyncGlobalContext<'g, 'b, S: Span, F, A: Allocator + Clone + Sync = A
     pub alloc_tl: ThreadLocal<BumpPoolGuard<'b, A, 1, true, true>>,
     pub alloc_pool: &'b BumpPool<A>,
     pub module: &'b Module<'b, S>,
-    pub global_syms: &'g HashMap<&'b str, (F, GlobalId<'b, S>)>,
+    pub global_syms: &'g BTreeMap<&'b str, (F, GlobalId<'b, S>)>,
     pub file: F,
 }
 #[cfg(feature = "rayon")]
@@ -274,6 +294,13 @@ pub trait ToHir<'b, F: Clone>: Located {
     ) -> LowerResult {
         Ok(())
     }
+    fn resolve_imports(
+        &self,
+        glb: &mut GlobalPreContext<'_, 'b, Self::Span, F>,
+        loc: &mut LocalInGlobalContext<'b>,
+    ) -> LowerResult {
+        Ok(())
+    }
     fn global(
         &self,
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
@@ -312,7 +339,7 @@ pub mod single_threaded {
         alloc: impl Into<&'b BumpScope<'b>>,
         module: &'b Module<'b, A::Span>,
         errs: E,
-        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        global_syms: Option<&mut BTreeMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
         starting_scope: String,
     ) -> LowerResult {
         let file = ast.file.clone();
@@ -348,6 +375,9 @@ pub mod single_threaded {
             ast.nodes
                 .iter()
                 .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
+            ast.nodes
+                .iter()
+                .try_for_each(|a| a.resolve_imports(&mut glb, &mut loc))?;
         }
         {
             let glb = GlobalContext {
@@ -371,7 +401,7 @@ pub mod single_threaded {
         ast: &asts::FrolicAST<A, F>,
         alloc: impl Into<&'b BumpScope<'b>>,
         errs: E,
-        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        global_syms: Option<&mut BTreeMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
         mod_name: impl std::fmt::Display,
         starting_scope: String,
     ) -> &'b Module<'b, A::Span>
@@ -412,7 +442,7 @@ pub mod multi_threaded {
         alloc: &'b BumpPool,
         module: &'b Module<'b, A::Span>,
         errs: E,
-        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        global_syms: Option<&mut BTreeMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
         starting_scope: String,
     ) -> LowerResult
     where
@@ -449,6 +479,9 @@ pub mod multi_threaded {
             ast.nodes
                 .iter()
                 .try_for_each(|a| a.predef_global(&mut glb, &mut loc))?;
+            ast.nodes
+                .iter()
+                .try_for_each(|a| a.resolve_imports(&mut glb, &mut loc))?;
         }
         std::mem::drop(local_alloc); // return this memory asap for the heavy processing
         {
@@ -476,7 +509,7 @@ pub mod multi_threaded {
         ast: &asts::FrolicAST<A, F>,
         alloc: &'b BumpPool,
         errs: E,
-        global_syms: Option<&mut HashMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
+        global_syms: Option<&mut BTreeMap<&'b str, (F, GlobalId<'b, A::Span>)>>,
         mod_name: impl std::fmt::Display,
         starting_scope: String,
     ) -> &'b Module<'b, A::Span>

@@ -1,4 +1,4 @@
-#![feature(array_windows)]
+#![feature(array_windows, iter_intersperse)]
 
 pub mod common;
 pub mod hir;
