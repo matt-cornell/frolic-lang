@@ -1,4 +1,4 @@
-#![feature(array_windows)]
+#![feature(array_windows, iter_intersperse)]
 use atomic_ref::AtomicRef;
 use std::fmt::{self, Debug, Formatter, Write};
 use std::sync::atomic::Ordering;

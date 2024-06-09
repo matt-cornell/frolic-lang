@@ -36,4 +36,9 @@ pub enum ParseASTError<'src, S: Span> {
         #[label("opened here")]
         start: S,
     },
+    #[error("Empty glob group")]
+    EmptyGlobGroup {
+        #[label]
+        span: S,
+    },
 }

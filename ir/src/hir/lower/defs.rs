@@ -1,6 +1,5 @@
 use super::*;
 use std::cell::Cell;
-use std::collections::hash_map::Entry;
 
 #[inline(always)]
 const fn unknown<'b, S>() -> Operand<'b, S> {
@@ -28,7 +27,6 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 ),
             );
         };
-        use std::fmt::Write;
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{self_name}");
         let (ret, erred) = if let Some((last, rest)) = self.params.split_last() {
@@ -105,6 +103,8 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                     .into_ref()
                             },
                             span: nloc,
+                            is_func: true,
+                            docs: &[],
                             kind: GlobalKind::Local {
                                 captures: Id(stack
                                     .last()
@@ -113,7 +113,6 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                     .unwrap()),
                                 ty: types[i],
                             },
-                            is_func: true,
                             blocks: LinkedList::NEW,
                             link: LinkedListLink::NEW,
                         })
@@ -132,7 +131,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                         .alloc(Block::returning("entry", Operand::Global(Id(callee))))
                         .into_ref();
                     caller.push_back(blk);
-                    let name = glb.intern_cow(&param.name);
+                    let name = glb.intern_cow_str(&param.name);
                     let inst = glb
                         .alloc
                         .alloc(Inst {
@@ -146,7 +145,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                     loc.locals.insert(name, Id(inst));
                 }
                 {
-                    let name = glb.intern_cow(&last.name);
+                    let name = glb.intern_cow_str(&last.name);
                     let inst = glb
                         .alloc
                         .alloc(Inst {
@@ -160,7 +159,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                     loc.locals.insert(name, Id(inst));
                 }
                 let self_val = {
-                    let name = glb.intern_cow(self_name);
+                    let name = glb.intern_cow_str(self_name);
                     let inst = glb
                         .alloc
                         .alloc(Inst {
@@ -188,7 +187,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                 return (const_err(), erred);
             }
             let (val, erred) = self.body.local(glb, loc);
-            let name = glb.intern_cow(self_name);
+            let name = glb.intern_cow_str(self_name);
             let inst = glb
                 .alloc
                 .alloc(Inst {
@@ -222,6 +221,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
             .alloc
             .alloc_fmt(format_args!("{}.{}", loc.scope_name, self.name))
             .into_ref();
+        let docs = glb.intern_cow_slice(&self.doc);
         self.name
             .segs
             .iter()
@@ -264,6 +264,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 } else {
                                     GlobalKind::NAMESPACE
                                 },
+                                docs: if is_last { docs } else { &[] },
                                 blocks: LinkedList::NEW,
                                 link: LinkedListLink::NEW,
                             })
@@ -288,7 +289,6 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
         loc: &mut LocalInGlobalContext<'b>,
     ) -> LowerResult {
-        use std::fmt::Write;
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{}", self.name);
         let Some(&(_, Id(outer))) = glb.global_syms.get(&*loc.scope_name) else {
@@ -313,6 +313,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 .into_ref(),
                             span: ty.loc(),
                             is_func: false,
+                            docs: &[],
                             kind: GlobalKind::Global(AtomicRef::new(None)),
                             blocks: LinkedList::NEW,
                             link: LinkedListLink::NEW,
@@ -348,6 +349,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 .into_ref(),
                             span: ty.loc(),
                             is_func: false,
+                            docs: &[],
                             kind: GlobalKind::Global(AtomicRef::new(None)),
                             blocks: LinkedList::NEW,
                             link: LinkedListLink::NEW,
@@ -399,6 +401,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                         name,
                         span,
                         is_func: false,
+                        docs: &[],
                         kind: GlobalKind::Global(AtomicRef::new(None)),
                         blocks: LinkedList::NEW,
                         link: LinkedListLink::NEW,
@@ -441,6 +444,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                     .into_ref(),
                                 span: dnloc,
                                 is_func: true,
+                                docs: &[],
                                 kind: GlobalKind::Local {
                                     captures: Id(*stack.last().unwrap()),
                                     ty: Operand::Global(Id(types[i].unwrap())),
@@ -461,6 +465,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 .into_ref(),
                             span: dnloc,
                             is_func: true,
+                            docs: &[],
                             kind: GlobalKind::Local {
                                 captures: Id(*stack.last().unwrap()),
                                 ty: Operand::Global(Id(types[rest.len()].unwrap())),
@@ -480,7 +485,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                                 .alloc(Block::returning("entry", Operand::Global(Id(callee))))
                                 .into_ref();
                             caller.push_back(blk);
-                            let name = glb.intern_cow(&param.name);
+                            let name = glb.intern_cow_str(&param.name);
                             let inst = glb
                                 .alloc
                                 .alloc(Inst {
@@ -494,7 +499,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                             loc.locals.insert(name, Id(inst));
                         }
                         {
-                            let name = glb.intern_cow(&last.name);
+                            let name = glb.intern_cow_str(&last.name);
                             let inst = glb
                                 .alloc
                                 .alloc(Inst {
@@ -515,7 +520,7 @@ impl<'b, 'src: 'b, F: PartialEq + Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts:
                     let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
                     outer.push_back(blk);
                     loc.in_local(Id(blk), |loc| {
-                        let name = glb.intern_cow(&last.name);
+                        let name = glb.intern_cow_str(&last.name);
                         let inst = glb
                             .alloc
                             .alloc(Inst {
@@ -553,7 +558,6 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
         loc: &mut LocalInLocalContext<'b, Self::Span>,
     ) -> (Operand<'b, Self::Span>, LowerResult) {
-        use std::fmt::Write;
         let old_len = loc.scope_name.len();
         let _ = write!(loc.scope_name, ".{}", self.name);
         let (val, erred) = self.body.local(glb, loc);
@@ -572,6 +576,7 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
                     captures: Id(loc.insert.0.parent(Ordering::Relaxed).unwrap()),
                     ty: Operand::Const(Constant::Unknown),
                 },
+                docs: &[],
                 blocks: LinkedList::NEW,
                 link: LinkedListLink::NEW,
             })
@@ -580,7 +585,7 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
         let blk = glb.alloc.alloc(Block::new("entry")).into_ref();
         cont.push_back(blk);
         let old_blk = std::mem::replace(&mut loc.insert, Id(blk));
-        let arg_name = glb.intern_cow(&self.name);
+        let arg_name = glb.intern_cow_str(&self.name);
         let inst = glb
             .alloc
             .alloc(Inst {
@@ -612,7 +617,7 @@ impl<'b, 'src: 'b, F: Clone, A: ToHir<'b, F>> ToHir<'b, F> for asts::LetOpAST<'s
                     break 'func (Operand::Global(v), Ok(()));
                 }
             }
-            let name = glb.intern_cow(&self.name);
+            let name = glb.intern_cow_str(&self.name);
             if let Some(&(_, v)) = glb.global_syms.get(name) {
                 break 'func (Operand::Global(v), Ok(()));
             }

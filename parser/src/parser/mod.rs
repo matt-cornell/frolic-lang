@@ -17,29 +17,7 @@ struct Parser<'src, 'a, A, F, S: Span> {
     errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
     _asts: PhantomData<A>,
 }
-impl<'src, 'a, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S>
-where
-    A::AstBox: Located<Span = S>,
-    asts::ErrorAST<S>: Unsize<A::AstTrait>,
-    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
-    asts::IntLitAST<S>: Unsize<A::AstTrait>,
-    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
-    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
-    asts::NullAST<S>: Unsize<A::AstTrait>,
-    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
-    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
-    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
-    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
-    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
-{
+impl<'src, 'a, A, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S> {
     /// Create a new parser
     pub fn new(
         input: &'a [Token<'src, S>],
@@ -101,7 +79,31 @@ where
             |t| t.span.offset(),
         ))
     }
-
+}
+impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
+where
+    A::AstBox: Located<Span = S>,
+    asts::ErrorAST<S>: Unsize<A::AstTrait>,
+    asts::CommentAST<'src, S>: Unsize<A::AstTrait>,
+    asts::IntLitAST<S>: Unsize<A::AstTrait>,
+    asts::FloatLitAST<S>: Unsize<A::AstTrait>,
+    asts::StringLitAST<'src, S>: Unsize<A::AstTrait>,
+    asts::NullAST<S>: Unsize<A::AstTrait>,
+    asts::VarAST<'src, S>: Unsize<A::AstTrait>,
+    asts::LetAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::LetOpAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::SeqAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::BraceAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ParenAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::IfElseAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CallAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::ShortCircuitAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::FunctionTypeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
+    asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
+{
     fn eat_comment(&mut self, out: &mut Vec<A::AstBox>) -> bool {
         loop {
             let Some(tok) = self.input.get(self.index) else {
@@ -133,7 +135,7 @@ where
                                     return true;
                                 }
                             }
-                            TokenKind::Keyword(Keyword::Let) => return false,
+                            TokenKind::Keyword(Keyword::Let | Keyword::Namespace) => return false,
                             _ => {
                                 return self
                                     .report(ParseASTError::UnboundOuterDoc { span: tok.span })
@@ -252,17 +254,18 @@ where
     }
 
     /// Parse a program at the top level.
-    fn parse_top_level_impl(&mut self) -> (Vec<A::AstBox>, bool) {
-        let mut out = Vec::new();
+    pub fn parse_top_level(&mut self, in_ns: bool, out: &mut Vec<A::AstBox>) -> bool
+    where
+        asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    {
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
+                TokenKind::Close(Delim::Brace) if in_ns => break,
                 TokenKind::Keyword(Keyword::Let) => {
-                    let (res, ret) = self.parse_let_decl(true, &mut out);
+                    let (res, ret) = self.parse_let_decl(true, out);
+                    out.push(A::make_box(res));
                     if ret {
-                        return (out, true);
-                    }
-                    if let Some(res) = res {
-                        out.push(A::make_box(res));
+                        return true;
                     }
                     if matches!(
                         self.current_token(),
@@ -275,20 +278,34 @@ where
                     } else {
                         let err = self.exp_found("';' after let-declaration");
                         if self.report(err) {
-                            return (out, true);
+                            return true;
                         }
                         let Some(next) = self.input[self.index..]
                             .iter()
                             .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
                         else {
-                            return (out, false);
+                            return false;
                         };
                         self.index += next;
                     }
                 }
+                TokenKind::Keyword(Keyword::Namespace) => {
+                    let (res, erred) = self.parse_namespace_def(out);
+                    out.push(A::make_box(res));
+                    if erred {
+                        return true;
+                    }
+                }
+                TokenKind::Keyword(Keyword::Using) => {
+                    let (res, erred) = self.parse_using_decl(out);
+                    out.push(A::make_box(res));
+                    if erred {
+                        return true;
+                    }
+                }
                 TokenKind::Comment(..) => {
-                    if self.eat_comment(&mut out) {
-                        return (out, true);
+                    if self.eat_comment(out) {
+                        return true;
                     }
                 }
                 TokenKind::Special(SpecialChar::Semicolon) => self.index += 1,
@@ -296,23 +313,19 @@ where
                     self.index += 1;
                     let ret = self.report(ParseASTError::InvalidTlExpression { span: tok.span });
                     if ret {
-                        return (out, true);
+                        return true;
                     }
                     let Some(next) = self.input[self.index..]
                         .iter()
                         .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
                     else {
-                        return (out, false);
+                        return false;
                     };
                     self.index += next;
                 }
             }
         }
-        (out, false)
-    }
-
-    pub fn parse_top_level(&mut self) -> Vec<A::AstBox> {
-        self.parse_top_level_impl().0
+        false
     }
 }
 
@@ -349,6 +362,7 @@ where
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
     parser.parse_expr(false, false, &mut vec![]).0
@@ -364,7 +378,7 @@ pub fn parse_tl<
     file: F,
     mut errs: E,
     _defs: A,
-) -> asts::FrolicAST<A::AstBox, F>
+) -> asts::FrolicAST<'src, A::AstBox, F>
 where
     A::AstBox: Located<Span = S>,
     asts::ErrorAST<S>: Unsize<A::AstTrait>,
@@ -386,8 +400,96 @@ where
     asts::AscribeAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::CastAST<A::AstBox>: Unsize<A::AstTrait>,
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
+    asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
     let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
-    let nodes = parser.parse_top_level();
-    asts::FrolicAST { file, nodes }
+    let mut nodes = Vec::new();
+    let name = if matches!(
+        input.get(0),
+        Some(Token {
+            kind: TokenKind::Keyword(Keyword::Namespace),
+            ..
+        })
+    ) {
+        parser.index = 1;
+        if parser.eat_comment(&mut nodes) {
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name: None,
+            };
+        }
+        let (name, erred) = parser.parse_dottedname(&mut nodes);
+        if erred {
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name,
+            };
+        }
+        if parser.eat_comment(&mut nodes) {
+            return asts::FrolicAST {
+                file,
+                nodes: vec![],
+                name,
+            };
+        }
+        let mut reported = false;
+        loop {
+            match parser.current_token() {
+                Some(Token {
+                    kind: TokenKind::Open(Delim::Brace),
+                    ..
+                }) => break None,
+                Some(Token {
+                    kind: TokenKind::Special(SpecialChar::Semicolon),
+                    ..
+                }) => break name,
+                Some(Token {
+                    kind: TokenKind::Keyword(Keyword::Let | Keyword::Namespace),
+                    ..
+                }) => {
+                    if !reported {
+                        let err = parser.exp_found("';' after file module definition");
+                        if parser.report(err) {
+                            return asts::FrolicAST {
+                                file,
+                                nodes: vec![],
+                                name,
+                            };
+                        }
+                    }
+                    break name;
+                }
+                _ => {
+                    if !reported {
+                        let err = parser.exp_found("';' after file module definition");
+                        if parser.report(err) {
+                            return asts::FrolicAST {
+                                file,
+                                nodes: vec![],
+                                name,
+                            };
+                        }
+                    }
+                    reported = true;
+                }
+            }
+            if parser.eat_comment(&mut nodes) {
+                return asts::FrolicAST {
+                    file,
+                    nodes: vec![],
+                    name,
+                };
+            }
+        }
+    } else {
+        None
+    };
+    if name.is_none() {
+        parser.index = 0;
+    }
+    parser.parse_top_level(false, &mut nodes);
+    asts::FrolicAST { file, nodes, name }
 }

@@ -126,6 +126,11 @@ impl<S> Display for Block<'_, S> {
 }
 impl<S> Display for Global<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use std::fmt::Write;
+        {
+            let mut ind = indenter::indented(f).with_str("## ");
+            writeln!(ind, "{}", bstr::BStr::new(self.docs))?;
+        }
         let ty = match &self.kind {
             GlobalKind::Local { captures, ty } => {
                 writeln!(f, "# captures {captures}")?;
@@ -155,8 +160,8 @@ impl<S> Display for Global<'_, S> {
 impl<S> Display for Module<'_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         writeln!(f, "# module {}", self.name)?;
+        writeln!(f)?;
         for glb in self.globals.iter() {
-            writeln!(f)?;
             writeln!(f, "{glb}")?;
         }
         Ok(())

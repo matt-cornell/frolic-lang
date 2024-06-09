@@ -149,6 +149,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 '\\' => single_char!(TokenKind::Special(SpecialChar::Backslash)),
                 ';' => single_char!(TokenKind::Special(SpecialChar::Semicolon)),
                 '.' => single_char!(TokenKind::Special(SpecialChar::Dot)),
+                ',' => single_char!(TokenKind::Special(SpecialChar::Comma)),
                 '(' => single_char!(TokenKind::Open(Delim::Paren)),
                 ')' => single_char!(TokenKind::Close(Delim::Paren)),
                 '{' => single_char!(TokenKind::Open(Delim::Brace)),

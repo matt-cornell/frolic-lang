@@ -8,6 +8,17 @@ use frolic_utils::synccell::SyncCell;
 
 mod disp;
 
+fn ptr_opt<T>(val: &Option<&T>, f: &mut Formatter<'_>) -> fmt::Result {
+    if let Some(ptr) = val {
+        write!(f, "{ptr:p}")
+    } else {
+        f.write_str("null")
+    }
+}
+fn debug_bstr<T: AsRef<[u8]>>(val: &T, f: &mut Formatter<'_>) -> fmt::Result {
+    Debug::fmt(bstr::BStr::new(val), f)
+}
+
 /// Wrapper around a pointer for better intent and impls of `Debug` and `Eq`
 #[repr(transparent)]
 #[derive(Derivative, From)]
@@ -86,10 +97,13 @@ impl<'b, S> GlobalKind<'b, S> {
 }
 impl<S> NoDrop for GlobalKind<'_, S> {}
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Global<'b, S> {
     pub name: &'b str,
     pub is_func: bool,
+    #[derivative(Debug(format_with = "debug_bstr"))]
+    pub docs: &'b [u8],
     pub span: S,
     pub kind: GlobalKind<'b, S>,
     pub blocks: LinkedList<'b, Block<'b, S>>,

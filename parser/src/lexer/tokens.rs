@@ -39,7 +39,8 @@ pub enum Keyword {
     If,
     Then,
     Else,
-    For,
+    Namespace,
+    Using,
 }
 impl Keyword {
     pub fn as_str(self) -> &'static str {
@@ -68,6 +69,7 @@ pub enum SpecialChar {
     Backslash,
     Equals,
     Dot,
+    Comma,
     /// this is the `->` sequence
     Arrow,
 }

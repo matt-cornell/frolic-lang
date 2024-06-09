@@ -40,7 +40,6 @@ impl<'b, 'src: 'b, F: Clone, S: Span> ToHir<'b, F> for asts::VarAST<'src, S> {
         glb: &GlobalContext<'_, 'b, Self::Span, F>,
         loc: &mut LocalInLocalContext<'b, Self::Span>,
     ) -> (Operand<'b, Self::Span>, LowerResult) {
-        use std::fmt::Write;
         if self.global.is_none() {
             if let Some(&v) = loc.locals.lookup(&*self.name) {
                 return (Operand::Inst(v), Ok(()));
@@ -53,7 +52,7 @@ impl<'b, 'src: 'b, F: Clone, S: Span> ToHir<'b, F> for asts::VarAST<'src, S> {
                 }
             }
         }
-        let name = glb.intern_cow(&self.name);
+        let name = glb.intern_cow_str(&self.name);
         if let Some(&(_, v)) = glb.global_syms.get(name) {
             return (Operand::Global(v), Ok(()));
         }
