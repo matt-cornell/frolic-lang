@@ -1,7 +1,21 @@
 use super::*;
 use miette::Diagnostic;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Display, Formatter};
 use thiserror::Error;
+
+/// Helper formatting struct, prints "end of input" if given None and for trees, prints an elipsis
+struct FormatFound<'a, 'src, S>(&'a Option<TokenKind<'src, S>>);
+impl<S: Debug> Display for FormatFound<'_, '_, S> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            None => f.write_str("end of input"),
+            Some(TokenKind::Paren(_)) => f.write_str("( ... )"),
+            Some(TokenKind::Brace(_)) => f.write_str("{ ... }"),
+            Some(TokenKind::Bracket(_)) => f.write_str("[ ... ]"),
+            Some(tok) => Debug::fmt(tok, f),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
 pub enum ParseASTError<'src, S: Span> {
@@ -23,18 +37,9 @@ pub enum ParseASTError<'src, S: Span> {
     #[error("Expected {ex}")]
     ExpectedFound {
         ex: &'static str,
-        #[label("found {}", .found.as_ref().map_or("EOF".to_string(), |t| format!("{t:?}")))]
+        #[label("found {}", FormatFound(.found))]
         span: S,
-        found: Option<TokenKind<'src>>,
-    },
-    #[error("Unmatched '{}'", .kind.get_char(!.close))]
-    UnmatchedDelimeter {
-        kind: Delim,
-        close: bool,
-        #[label]
-        span: S,
-        #[label("opened here")]
-        start: S,
+        found: Option<TokenKind<'src, S>>,
     },
     #[error("Empty glob group")]
     EmptyGlobGroup {

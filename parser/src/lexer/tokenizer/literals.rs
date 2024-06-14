@@ -13,7 +13,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             let Some(&c) = self.input.get(self.index) else {
                 self.tokens.push(Token {
                     kind: TokenKind::Int(int * mul),
-                    span: S::range(self.offset + start, self.offset + self.index),
+                    span: S::range(start, self.index),
                 });
                 return false;
             };
@@ -23,7 +23,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                     let x = c - b'0';
                     if x >= kind as u8 {
                         return self.report(TokenizeError::InvalidCharInLit {
-                            span: S::new(self.offset + self.index, 1),
+                            span: S::new(self.index, 1),
                             found: c as _,
                             kind,
                         });
@@ -46,7 +46,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                     self.index -= 1;
                     self.tokens.push(Token {
                         kind: TokenKind::Int(int * mul),
-                        span: S::range(self.offset + start, self.offset + self.index),
+                        span: S::range(start, self.index),
                     });
                     return false;
                 }
@@ -61,7 +61,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         }
         self.tokens.push(Token {
             kind: TokenKind::Float(float * if neg { -1.0 } else { 1.0 }),
-            span: S::range(self.offset + start, self.offset + self.index),
+            span: S::range(start, self.index),
         });
         false
     }
@@ -89,7 +89,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 _ => {
                     self.tokens.push(Token {
                         kind: TokenKind::Int(0),
-                        span: S::new(self.offset + start, 1),
+                        span: S::new(start, 1),
                     });
                     false
                 }
@@ -114,8 +114,8 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             Some(Err(ret)) => return ret,
             None => {
                 return self.report(TokenizeError::UnclosedCharLit {
-                    span: S::new(start + self.offset, 1),
-                    end: self.index + self.offset,
+                    span: S::new(start, 1),
+                    end: self.index,
                 })
             }
         };
@@ -123,7 +123,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             '\'' => {
                 self.tokens.push(Token {
                     kind: TokenKind::Char(0),
-                    span: S::new(start + self.offset, 2),
+                    span: S::new(start, 2),
                 });
                 return false;
             }
@@ -163,7 +163,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                         let l = last.len_utf8();
                                         if self.report(TokenizeError::ExpectedUnicodeBrace {
                                             close: true,
-                                            span: S::new(self.index - l + self.offset, l),
+                                            span: S::new(self.index - l, l),
                                             found: last,
                                         }) {
                                             return true;
@@ -177,7 +177,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                     let l = c.len_utf8();
                                     if self.report(TokenizeError::ExpectedUnicodeBrace {
                                         close: false,
-                                        span: S::new(self.index - l + self.offset, l),
+                                        span: S::new(self.index - l, l),
                                         found: c,
                                     }) {
                                         return true;
@@ -187,15 +187,15 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                 }
                                 None => {
                                     return self.report(TokenizeError::UnclosedCharLit {
-                                        span: S::new(start + self.offset, 1),
-                                        end: self.index + self.offset,
+                                        span: S::new(start, 1),
+                                        end: self.index,
                                     });
                                 }
                             }
                         }
                         _ => {
                             if self.report(TokenizeError::UnknownEscapeCode {
-                                span: S::new(self.index + self.offset - 1, 1),
+                                span: S::new(self.index - 1, 1),
                                 code: b,
                             }) {
                                 return true;
@@ -206,8 +206,8 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                     }
                 } else {
                     return self.report(TokenizeError::UnclosedCharLit {
-                        span: S::new(start + self.offset, 1),
-                        end: self.index + self.offset,
+                        span: S::new(start, 1),
+                        end: self.index,
                     });
                 }
             }
@@ -218,14 +218,14 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             Some(Ok('\'') | Err(false)) => {}
             Some(Ok(_)) | None => {
                 return self.report(TokenizeError::UnclosedCharLit {
-                    span: S::new(start + self.offset, 1),
-                    end: self.index + self.offset,
+                    span: S::new(start, 1),
+                    end: self.index,
                 });
             }
         }
         self.tokens.push(Token {
             kind: TokenKind::Char(val),
-            span: S::range(start + self.offset, self.index + self.offset),
+            span: S::range(start, self.index),
         });
         false
     }
@@ -292,7 +292,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                 let l = last.len_utf8();
                                 if self.report(TokenizeError::ExpectedUnicodeBrace {
                                     close: true,
-                                    span: S::new(self.index - l + self.offset, l),
+                                    span: S::new(self.index - l, l),
                                     found: last,
                                 }) {
                                     return true;
@@ -305,7 +305,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                             let l = c.len_utf8();
                             if self.report(TokenizeError::ExpectedUnicodeBrace {
                                 close: false,
-                                span: S::new(self.index - l + self.offset, l),
+                                span: S::new(self.index - l, l),
                                 found: c,
                             }) {
                                 return true;
@@ -315,7 +315,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                     },
                     _ => {
                         if self.report(TokenizeError::UnknownEscapeCode {
-                            span: S::new(self.index + self.offset - 1, 1),
+                            span: S::new(self.index - 1, 1),
                             code: b,
                         }) {
                             return true;
@@ -326,17 +326,17 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             } else {
                 self.tokens.push(Token {
                     kind: TokenKind::String(out),
-                    span: S::range(start + self.offset, self.index + self.offset),
+                    span: S::range(start, self.index),
                 });
                 return self.report(TokenizeError::UnclosedStrLit {
-                    span: S::new(start + self.offset, 1),
-                    end: self.index + self.offset,
+                    span: S::new(start, 1),
+                    end: self.index,
                 });
             }
         }
         self.tokens.push(Token {
             kind: TokenKind::String(out),
-            span: S::range(start + self.offset, self.index + self.offset),
+            span: S::range(start, self.index),
         });
         false
     }

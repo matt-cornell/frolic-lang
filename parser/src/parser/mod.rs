@@ -15,6 +15,7 @@ struct Parser<'src, 'a, A, F, S: Span> {
     index: usize,
     file: F,
     errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
+    found: Option<&'a TokenKind<'src, S>>,
     _asts: PhantomData<A>,
 }
 impl<'src, 'a, A, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S> {
@@ -23,11 +24,13 @@ impl<'src, 'a, A, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S> {
         input: &'a [Token<'src, S>],
         file: F,
         errs: &'a mut dyn ErrorReporter<SourcedError<F, ParseASTError<'src, S>>>,
+        found: Option<&'a TokenKind<'src, S>>,
     ) -> Self {
         Self {
             input,
             file,
             errs,
+            found,
             index: 0,
             _asts: PhantomData,
         }
@@ -47,7 +50,7 @@ impl<'src, 'a, A, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S> {
         ParseASTError::ExpectedFound {
             ex,
             span,
-            found: tok.map(|t| t.kind.clone()),
+            found: tok.map(|t| t.kind.clone()).or_else(|| self.found.cloned()),
         }
     }
 
@@ -78,6 +81,41 @@ impl<'src, 'a, A, F: Copy, S: SpanConstruct> Parser<'src, 'a, A, F, S> {
             },
             |t| t.span.offset(),
         ))
+    }
+
+    #[inline]
+    fn in_tree_at<R, C: FnOnce(Parser<'src, 'a, A, F, S>) -> R>(
+        &mut self,
+        idx: usize,
+        call: C,
+    ) -> R {
+        // SAFETY: we get the pointer from a reference, destructor is trivial
+        // TODO: could this be made safe?
+        unsafe {
+            let mut this = std::ptr::read(self);
+            let Some(Token {
+                kind: TokenKind::Paren(toks) | TokenKind::Brace(toks) | TokenKind::Bracket(toks),
+                ..
+            }) = this.input.get(idx)
+            else {
+                panic!(
+                    "invalid token to enter at index {idx} (tok = {:?})",
+                    this.input.get(idx)
+                )
+            };
+            this.found = this.input.get(idx + 1).map(|t| &t.kind).or(this.found);
+            this.input = &**toks;
+            this.index = 0;
+            call(this)
+        }
+    }
+    /// Use inside a token tree. A mutable reference isn't needed, but is prevents
+    /// accidental use of the outer parser.
+    #[inline]
+    fn in_tree_here<R, C: FnOnce(Parser<'src, 'a, A, F, S>) -> R>(&mut self, call: C) -> R {
+        let ret = self.in_tree_at(self.index, call);
+        self.index += 1;
+        ret
     }
 }
 impl<'src, A: AstDefs<'src>, F: Copy, S: SpanConstruct> Parser<'src, '_, A, F, S>
@@ -171,67 +209,67 @@ where
                 (Some((i, span)), false)
             }
             Some(&Token {
-                kind: TokenKind::Open(Delim::Paren),
-                span: start,
+                kind: TokenKind::Paren(_),
+                span,
             }) => {
-                self.index += 1;
-                if self.eat_comment(out) {
-                    return (None, true);
-                }
-                let (id, mspan) = match self.current_token() {
-                    Some(&Token {
-                        kind:
-                            TokenKind::PreOp(op)
-                            | TokenKind::InfOp(op)
-                            | TokenKind::LetOp(op)
-                            | TokenKind::Ident(op),
-                        span,
-                    }) => (op, span),
-                    Some(&Token {
-                        kind: TokenKind::AmbigOp(op),
-                        span,
-                    }) => (op.as_inf_str(), span),
-                    Some(&Token {
-                        kind: TokenKind::Keyword(kw),
-                        span,
-                    }) => (kw.as_str(), span),
-                    _ => {
-                        if necessary {
-                            let tok = self.current_token().cloned();
-                            let span = self.curr_span();
-                            self.index += 1;
-                            return (
-                                None,
-                                self.report(ParseASTError::ExpectedFound {
-                                    ex: "an identifier",
-                                    span,
-                                    found: tok.map(|t| t.kind),
-                                }),
-                            );
-                        } else {
-                            self.index = orig;
-                            return (None, false);
-                        }
+                let (ret, rw) = self.in_tree_here(|mut this| {
+                    if this.eat_comment(out) {
+                        return ((None, true), false);
                     }
-                };
-                self.index += 1;
-                if self.eat_comment(out) {
-                    return (Some((id, start.merge(mspan))), true);
-                }
-                if let Some(&Token {
-                    kind: TokenKind::Close(Delim::Paren),
-                    span: end,
-                }) = self.current_token()
-                {
-                    self.index += 1;
-                    (Some((id, start.merge(end))), false)
-                } else if necessary {
-                    let err = self.exp_found("')'");
-                    (Some((id, start.merge(mspan))), self.report(err))
-                } else {
+                    let op = match this.current_token() {
+                        Some(&Token {
+                            kind:
+                                TokenKind::PreOp(op)
+                                | TokenKind::InfOp(op)
+                                | TokenKind::LetOp(op)
+                                | TokenKind::Ident(op),
+                            ..
+                        }) => op,
+                        Some(&Token {
+                            kind: TokenKind::AmbigOp(op),
+                            ..
+                        }) => op.as_inf_str(),
+                        Some(&Token {
+                            kind: TokenKind::Keyword(kw),
+                            ..
+                        }) => kw.as_str(),
+                        _ => {
+                            if necessary {
+                                let tok = this.current_token().cloned();
+                                let span = this.curr_span();
+                                return (
+                                    (
+                                        None,
+                                        this.report(ParseASTError::ExpectedFound {
+                                            ex: "an identifier",
+                                            span,
+                                            found: tok.map(|t| t.kind),
+                                        }),
+                                    ),
+                                    false,
+                                );
+                            } else {
+                                return ((None, false), true);
+                            }
+                        }
+                    };
+                    this.index += 1;
+                    let erred = necessary && if let Some(tok) = this.current_token().cloned() {
+                        let span = this.curr_span();
+                        this.report(ParseASTError::ExpectedFound {
+                            ex: "closing ')'",
+                            span,
+                            found: Some(tok.kind),
+                        })
+                    } else {
+                        false
+                    };
+                    ((Some((op, span)), erred), false)
+                });
+                if rw {
                     self.index = orig;
-                    (None, false)
                 }
+                ret
             }
             _ => {
                 if necessary {
@@ -254,13 +292,12 @@ where
     }
 
     /// Parse a program at the top level.
-    pub fn parse_top_level(&mut self, in_ns: bool, out: &mut Vec<A::AstBox>) -> bool
+    pub fn parse_top_level(&mut self, out: &mut Vec<A::AstBox>) -> bool
     where
         asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     {
         while let Some(tok) = self.input.get(self.index) {
             match tok.kind {
-                TokenKind::Close(Delim::Brace) if in_ns => break,
                 TokenKind::Keyword(Keyword::Let) => {
                     let (res, ret) = self.parse_let_decl(true, out);
                     out.push(A::make_box(res));
@@ -280,10 +317,9 @@ where
                         if self.report(err) {
                             return true;
                         }
-                        let Some(next) = self.input[self.index..]
-                            .iter()
-                            .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
-                        else {
+                        let Some(next) = self.input[self.index..].iter().position(|t| {
+                            matches!(t.kind, TokenKind::Special(SpecialChar::Semicolon))
+                        }) else {
                             return false;
                         };
                         self.index += next;
@@ -317,7 +353,7 @@ where
                     }
                     let Some(next) = self.input[self.index..]
                         .iter()
-                        .position(|t| t.kind == TokenKind::Special(SpecialChar::Semicolon))
+                        .position(|t| matches!(t.kind, TokenKind::Special(SpecialChar::Semicolon)))
                     else {
                         return false;
                     };
@@ -364,7 +400,7 @@ where
     asts::LambdaAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
-    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
+    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs, None);
     parser.parse_expr(false, false, &mut vec![]).0
 }
 pub fn parse_tl<
@@ -403,7 +439,7 @@ where
     asts::NamespaceAST<'src, A::AstBox>: Unsize<A::AstTrait>,
     asts::UsingAST<'src, S>: Unsize<A::AstTrait>,
 {
-    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs);
+    let mut parser = Parser::<'src, '_, A, F, S>::new(input, file, &mut errs, None);
     let mut nodes = Vec::new();
     let name = if matches!(
         input.first(),
@@ -439,7 +475,7 @@ where
         loop {
             match parser.current_token() {
                 Some(Token {
-                    kind: TokenKind::Open(Delim::Brace),
+                    kind: TokenKind::Brace(_),
                     ..
                 }) => break None,
                 Some(Token {
@@ -490,6 +526,6 @@ where
     if name.is_none() {
         parser.index = 0;
     }
-    parser.parse_top_level(false, &mut nodes);
+    parser.parse_top_level(&mut nodes);
     asts::FrolicAST { file, nodes, name }
 }

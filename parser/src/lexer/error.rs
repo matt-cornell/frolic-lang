@@ -24,6 +24,26 @@ pub enum LitKind {
     Hex = 16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
+#[strum(serialize_all = "lowercase")]
+pub enum Delim {
+    Paren,
+    Brace,
+    Bracket,
+}
+impl TryFrom<char> for Delim {
+    type Error = char;
+
+    fn try_from(value: char) -> Result<Self, Self::Error> {
+        match value {
+            '(' | ')' => Ok(Self::Paren),
+            '{' | '}' => Ok(Self::Brace),
+            '[' | ']' => Ok(Self::Bracket),
+            _ => Err(value),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
 pub enum TokenizeError<S: Span> {
     #[error("unexpected char: {found:?}")]
@@ -71,6 +91,20 @@ pub enum TokenizeError<S: Span> {
         #[label]
         span: S,
         code: u8,
+    },
+    #[error("unmatched opening {kind}")]
+    UnmatchedOpenDelim {
+        kind: Delim,
+        #[label("expected here")]
+        span: S,
+        #[label("opened here")]
+        prev: S,
+    },
+    #[error("unmatched closing {kind}")]
+    UnmatchedCloseDelim {
+        kind: Delim,
+        #[label("expected here")]
+        span: S,
     },
     #[error("expected {} brace in unicode escape code", if *.close {"closing"} else {"opening"})]
     ExpectedUnicodeBrace {

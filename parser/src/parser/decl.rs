@@ -169,178 +169,76 @@ where
             }
         };
         let mut params = smallvec![];
-        'params: while let Some(tok) = self.input.get(self.index) {
+        while let Some(tok) = self.input.get(self.index) {
+            if self.eat_comment(out) {
+                return (
+                    asts::LetAST {
+                        kw,
+                        doc,
+                        name,
+                        params,
+                        ret: None,
+                        body: A::make_box(asts::ErrorAST {
+                            loc: self.curr_loc(),
+                        }),
+                    },
+                    true,
+                );
+            }
+            if let (Some((name, loc)), false) = self.parse_ident(false, out) {
+                params.push(asts::FnParam {
+                    name: name.into(),
+                    ty: None,
+                    loc,
+                });
+                continue;
+            }
             match tok.kind {
-                TokenKind::Comment(..) => {
-                    if self.eat_comment(out) {
-                        return (
-                            asts::LetAST {
-                                kw,
-                                doc,
-                                name,
-                                params,
-                                ret: None,
-                                body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc(),
-                                }),
-                            },
-                            true,
-                        );
-                    }
-                }
-                TokenKind::Ident(n) => {
-                    params.push(asts::FnParam {
-                        name: n.into(),
-                        ty: None,
-                        loc: tok.span,
-                    });
-                    self.index += 1;
-                }
-                TokenKind::Open(Delim::Paren) => 'param: {
-                    self.index += 1;
-                    if self.eat_comment(out) {
-                        return (
-                            asts::LetAST {
-                                kw,
-                                doc,
-                                name,
-                                params,
-                                ret: None,
-                                body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc(),
-                                }),
-                            },
-                            true,
-                        );
-                    }
-                    let (n, loc) =
-                        match self.parse_ident(true, out) {
-                            (_, true) => {
-                                return (
-                                    asts::LetAST {
-                                        kw,
-                                        doc,
-                                        name,
-                                        params,
-                                        ret: None,
-                                        body: A::make_box(asts::ErrorAST {
-                                            loc: self.curr_loc(),
-                                        }),
-                                    },
-                                    true,
-                                )
-                            }
+                TokenKind::Paren(_) => {
+                    let erred = self.in_tree_here(|mut this| {
+                        if this.eat_comment(out) {
+                            return true;
+                        }
+                        let (n, loc) = match this.parse_ident(true, out) {
+                            (_, true) => return true,
                             (Some(r), false) => r,
-                            (None, false) => {
-                                let next = self.input[self.index..].iter().enumerate().find_map(
-                                    |(n, t)| match t.kind {
-                                        TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
-                                        TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                        TokenKind::Special(SpecialChar::Equals) => Some((n, 2)),
-                                        _ => None,
-                                    },
-                                );
-                                match next {
-                                    Some((n, 0)) => {
-                                        self.index += n;
-                                        ("<error>", self.curr_loc())
-                                    }
-                                    Some((n, 1)) => {
-                                        self.index += n;
-                                        break 'param;
-                                    }
-                                    Some((n, 2)) => {
-                                        self.index += n;
-                                        break 'params;
-                                    }
-                                    _ => break 'params,
-                                }
-                            }
+                            (None, false) => ("<error>", this.curr_loc()),
                         };
-                    if self.eat_comment(out) {
-                        return (
-                            asts::LetAST {
-                                kw,
-                                doc,
-                                name,
-                                params,
-                                ret: None,
-                                body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc(),
-                                }),
-                            },
-                            true,
-                        );
-                    }
-                    if !matches!(
-                        self.current_token(),
-                        Some(Token {
-                            kind: TokenKind::Keyword(Keyword::Of),
-                            ..
-                        })
-                    ) {
-                        let err = self.exp_found("parameter type");
-                        if self.report(err) {
-                            return (
-                                asts::LetAST {
-                                    kw,
-                                    doc,
-                                    name,
-                                    params,
-                                    ret: None,
-                                    body: A::make_box(asts::ErrorAST {
-                                        loc: self.curr_loc(),
-                                    }),
-                                },
-                                true,
-                            );
+                        if this.eat_comment(out) {
+                            return true;
                         }
-                        let next =
-                            self.input[self.index..]
+                        if matches!(
+                            this.current_token(),
+                            Some(Token {
+                                kind: TokenKind::Keyword(Keyword::Of),
+                                ..
+                            })
+                        ) {
+                            this.index += 1;
+                        } else {
+                            let err = this.exp_found("`of`");
+                            if this.report(err) {
+                                return true;
+                            }
+                            this.index += 1;
+                            if let Some(n) = this.input[this.index..]
                                 .iter()
-                                .enumerate()
-                                .find_map(|(n, t)| match t.kind {
-                                    TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
-                                    TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                    TokenKind::Special(SpecialChar::Equals) => Some((n, 2)),
-                                    _ => None,
-                                });
-                        match next {
-                            Some((n, 0)) => self.index += n,
-                            Some((n, 1)) => {
-                                self.index += n;
-                                break 'param;
+                                .position(|t| matches!(t.kind, TokenKind::Keyword(Keyword::Of)))
+                            {
+                                this.index += n + 1;
+                            } else {
+                                this.index = this.input.len();
                             }
-                            Some((n, 2)) => {
-                                self.index += n;
-                                break 'params;
-                            }
-                            _ => break 'params,
                         }
-                    }
-                    self.index += 1;
-                    if self.eat_comment(out) {
-                        return (
-                            asts::LetAST {
-                                kw,
-                                doc,
-                                name,
-                                params,
-                                ret: None,
-                                body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc(),
-                                }),
-                            },
-                            true,
-                        );
-                    }
-                    let (ty, ret) = self.parse_expr(true, true, out);
-                    params.push(asts::FnParam {
-                        name: n.into(),
-                        loc,
-                        ty: Some(ty),
+                        let (ty, erred) = this.parse_expr(true, false, out);
+                        params.push(asts::FnParam {
+                            name: n.into(),
+                            ty: Some(ty),
+                            loc,
+                        });
+                        erred
                     });
-                    if ret {
+                    if erred {
                         return (
                             asts::LetAST {
                                 kw,
@@ -355,67 +253,6 @@ where
                             true,
                         );
                     }
-                    if self.eat_comment(out) {
-                        return (
-                            asts::LetAST {
-                                kw,
-                                doc,
-                                name,
-                                params,
-                                ret: None,
-                                body: A::make_box(asts::ErrorAST {
-                                    loc: self.curr_loc(),
-                                }),
-                            },
-                            true,
-                        );
-                    }
-                    if !matches!(
-                        self.current_token(),
-                        Some(Token {
-                            kind: TokenKind::Close(Delim::Paren),
-                            ..
-                        })
-                    ) {
-                        let err = self.exp_found("')'");
-                        if self.report(err) {
-                            return (
-                                asts::LetAST {
-                                    kw,
-                                    doc,
-                                    name,
-                                    params,
-                                    ret: None,
-                                    body: A::make_box(asts::ErrorAST {
-                                        loc: self.curr_loc(),
-                                    }),
-                                },
-                                true,
-                            );
-                        }
-                        let next =
-                            self.input[self.index..]
-                                .iter()
-                                .enumerate()
-                                .find_map(|(n, t)| match t.kind {
-                                    TokenKind::Keyword(Keyword::Of) => Some((n, 2)),
-                                    TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                    TokenKind::Special(SpecialChar::Equals) => Some((n, 2)),
-                                    _ => None,
-                                });
-                        match next {
-                            Some((n, 1)) => {
-                                self.index += n;
-                                break 'param;
-                            }
-                            Some((n, 2)) => {
-                                self.index += n;
-                                break 'params;
-                            }
-                            _ => break 'params,
-                        }
-                    }
-                    self.index += 1;
                 }
                 _ => break,
             }
@@ -423,7 +260,7 @@ where
         let ret = if let Some(Token {
             kind: TokenKind::Keyword(Keyword::Of),
             ..
-        }) = self.input.get(self.index)
+        }) = self.current_token()
         {
             self.index += 1;
             let (res, ret) = self.parse_expr(true, true, out);
@@ -470,7 +307,7 @@ where
             }
             if let Some(skip) = self.input[self.index..]
                 .iter()
-                .position(|t| t.kind == TokenKind::Special(SpecialChar::Equals))
+                .position(|t| matches!(t.kind, TokenKind::Special(SpecialChar::Equals)))
             {
                 self.index += skip;
             } else {
@@ -517,79 +354,28 @@ where
                 true,
             );
         }
-        let start = if let Some(&Token {
-            kind: TokenKind::Open(Delim::Brace),
+        let mut nodes = Vec::<A::AstBox>::new();
+        let (body, erred) = if let Some(&Token {
+            kind: TokenKind::Brace(_),
             span,
         }) = self.current_token()
         {
-            self.index += 1;
-            span
+            let erred = self.in_tree_here(|mut this| this.parse_top_level(&mut nodes));
+            (span, erred)
         } else {
             let err = self.exp_found("namespace body");
             let body = self.curr_loc();
-            if self.report(err) {
-                return (
-                    asts::NamespaceAST {
-                        name,
-                        kw,
-                        body,
-                        doc,
-                        nodes: vec![],
-                    },
-                    true,
-                );
-            } else {
-                body
-            }
-        };
-        let mut nodes = Vec::<A::AstBox>::new();
-        let erred = self.parse_top_level(true, &mut nodes);
-        if erred {
-            return (
-                asts::NamespaceAST {
-                    name,
-                    kw,
-                    doc,
-                    body: nodes.last().map_or(start, |end| start.merge(end.loc())),
-                    nodes,
-                },
-                true,
-            );
-        }
-        let end = if let Some(&Token {
-            kind: TokenKind::Close(Delim::Brace),
-            span,
-        }) = self.current_token()
-        {
-            self.index += 1;
-            span
-        } else {
-            let err = self.exp_found("closing '}'");
-            let end = self.curr_loc();
-            if self.report(err) {
-                return (
-                    asts::NamespaceAST {
-                        name,
-                        kw,
-                        doc,
-                        body: start.merge(end),
-                        nodes,
-                    },
-                    true,
-                );
-            } else {
-                end
-            }
+            (body, self.report(err))
         };
         (
             asts::NamespaceAST {
                 name,
                 kw,
-                body: start.merge(end),
+                body,
                 doc,
                 nodes,
             },
-            false,
+            erred,
         )
     }
 
@@ -616,33 +402,29 @@ where
                 (Some((GlobTerm::Star, span)), false)
             }
             Some(&Token {
-                kind: TokenKind::Open(Delim::Brace),
-                span: start,
+                kind: TokenKind::Brace(_),
+                span,
             }) => {
-                self.index += 1;
                 let mut globs = Vec::new();
                 let mut check_comma = false;
-                let mut erred = loop {
-                    match self.current_token() {
-                        Some(Token {
-                            kind: TokenKind::Close(Delim::Brace),
-                            ..
-                        }) => break false,
+                let mut erred = self.in_tree_here(|mut this| loop {
+                    match this.current_token() {
+                        None => break false,
                         Some(Token {
                             kind: TokenKind::Special(SpecialChar::Comma),
                             ..
-                        }) if check_comma => self.index += 1,
+                        }) if check_comma => this.index += 1,
                         _ => {
                             if check_comma {
-                                let err = self.exp_found("',' between glob options");
-                                if self.report(err) {
+                                let err = this.exp_found("',' between glob options");
+                                if this.report(err) {
                                     break true;
                                 }
                             }
                         }
                     }
                     check_comma = true;
-                    let (glob, erred) = self.parse_glob_list(false, out);
+                    let (glob, erred) = this.parse_glob_list(false, out);
                     if let Some(g) = glob {
                         globs.push(g);
                     } else {
@@ -651,21 +433,7 @@ where
                     if erred {
                         break true;
                     }
-                };
-                let span = if let Some(&Token {
-                    kind: TokenKind::Close(Delim::Brace),
-                    span,
-                }) = self.current_token()
-                {
-                    self.index += 1;
-                    start.merge(span)
-                } else {
-                    erred = erred || {
-                        let err = self.exp_found("closing '}'");
-                        self.report(err)
-                    };
-                    start
-                };
+                });
                 if let Ok(vec) = Vec1::try_from_vec(globs) {
                     (Some((GlobTerm::Group(vec), span)), erred)
                 } else {

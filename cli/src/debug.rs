@@ -78,9 +78,7 @@ impl Runnable for FrolicDebugLex {
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
-        for tok in toks {
-            writeln!(stdout, "{tok:?}")?;
-        }
+        writeln!(stdout, "{toks:#?}")?;
 
         Ok(())
     }

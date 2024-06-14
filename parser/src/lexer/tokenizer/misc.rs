@@ -32,7 +32,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 let comment = std::mem::replace(comment, Cow::Borrowed(&[]));
                 self.tokens.push(Token {
                     kind: TokenKind::Comment(comment, *kind),
-                    span: S::range(*start + self.offset, *end + self.offset),
+                    span: S::range(*start, *end),
                 });
             }
         }
@@ -93,8 +93,8 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                             e
                         } else {
                             if self.report(TokenizeError::UnclosedMultiline {
-                                span: S::new(start + self.offset, len + 1),
-                                end: self.input.len() + self.offset,
+                                span: S::new(start, len + 1),
+                                end: self.input.len(),
                             }) {
                                 return true;
                             }
@@ -117,7 +117,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                         std::mem::replace(&mut comment, Cow::Borrowed(&[]));
                                     self.tokens.push(Token {
                                         kind: TokenKind::Comment(comment, kind),
-                                        span: S::range(start + self.offset, end + self.offset),
+                                        span: S::range(start, end),
                                     });
                                 }
                             }
@@ -144,7 +144,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             if !comment.is_empty() {
                 self.tokens.push(Token {
                     kind: TokenKind::Comment(comment, kind),
-                    span: S::range(start + self.offset, end + self.offset),
+                    span: S::range(start, end),
                 });
             }
         }
@@ -177,7 +177,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         } else {
             self.tokens.push(Token {
                 kind: TokenKind::from_ident(ident),
-                span: S::range(start + self.offset, self.index + self.offset),
+                span: S::range(start, self.index),
             });
         }
     }

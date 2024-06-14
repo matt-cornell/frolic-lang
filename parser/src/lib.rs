@@ -2,10 +2,8 @@
 
 use frolic_utils::prelude::*;
 use lexer::tokens::*;
-use par::dispatch_chunks;
 
 pub mod lexer;
-mod par;
 pub mod parser;
 
 pub mod prelude {

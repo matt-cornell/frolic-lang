@@ -2,7 +2,7 @@ use super::*;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 
-fn matches_prec(op: &TokenKind, lvl: u8) -> bool {
+fn matches_prec<S>(op: &TokenKind<S>, lvl: u8) -> bool {
     match op {
         TokenKind::PreOp(_) => lvl == 1,
         TokenKind::AmbigOp(AmbigOp::Plus | AmbigOp::Minus) => lvl == 1 || lvl == 5,
@@ -605,123 +605,55 @@ where
                 self.index += 1;
                 param
             }
-            TokenKind::Open(Delim::Paren) => 'param: {
-                self.index += 1;
-                if self.eat_comment(out) {
-                    return Some(Err(()));
-                }
-                let (n, loc) = match self.parse_ident(true, out) {
-                    (_, true) => return Some(Err(())),
-                    (Some(r), false) => r,
-                    (None, false) => {
-                        let next =
-                            self.input[self.index..]
-                                .iter()
-                                .enumerate()
-                                .find_map(|(n, t)| match t.kind {
-                                    TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
-                                    TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                    TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
-                                    _ => None,
-                                });
-                        match next {
-                            Some((n, 0)) => {
-                                self.index += n;
-                                ("<error>", self.curr_loc())
-                            }
-                            Some((n, 1)) => {
-                                self.index += n;
-                                break 'param ("<error>".into(), self.curr_loc(), None);
-                            }
-                            Some((n, 2)) => {
-                                self.index += n.saturating_sub(1);
-                                break 'param ("<error>".into(), self.curr_loc(), None);
-                            }
-                            _ => return None,
+            TokenKind::Paren(_) => {
+                let ret = self.in_tree_here(|mut this| {
+                    if this.eat_comment(out) {
+                        return Err(());
+                    }
+                    let (n, loc) = match this.parse_ident(true, out) {
+                        (_, true) => return Err(()),
+                        (Some(r), false) => r,
+                        (None, false) => ("<error>", this.curr_loc()),
+                    };
+                    if this.eat_comment(out) {
+                        return Err(());
+                    }
+                    if !matches!(
+                        this.current_token(),
+                        Some(Token {
+                            kind: TokenKind::Keyword(Keyword::Of),
+                            ..
+                        })
+                    ) {
+                        let err = this.exp_found("parameter type");
+                        if this.report(err) {
+                            return Err(());
                         }
-                    }
-                };
-                if self.eat_comment(out) {
-                    return Some(Err(()));
-                }
-                if !matches!(
-                    self.current_token(),
-                    Some(Token {
-                        kind: TokenKind::Keyword(Keyword::Of),
-                        ..
-                    })
-                ) {
-                    let err = self.exp_found("parameter type");
-                    if self.report(err) {
-                        return Some(Err(()));
-                    }
-                    let next =
-                        self.input[self.index..]
+                        if let Some(next) = this.input[this.index..]
                             .iter()
-                            .enumerate()
-                            .find_map(|(n, t)| match t.kind {
-                                TokenKind::Keyword(Keyword::Of) => Some((n, 0)),
-                                TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
-                                _ => None,
-                            });
-                    match next {
-                        Some((n, 0)) => self.index += n,
-                        Some((n, 1)) => {
-                            self.index += n;
-                            break 'param ("<error>".into(), self.curr_loc(), None);
+                            .position(|t| matches!(t.kind, TokenKind::Keyword(Keyword::Of)))
+                        {
+                            this.index += next;
+                        } else {
+                            this.index = this.input.len();
                         }
-                        Some((n, 2)) => {
-                            self.index += n.saturating_sub(1);
-                            break 'param ("<error>".into(), self.curr_loc(), None);
-                        }
-                        _ => return None,
+                    } else {
+                        this.index += 1;
                     }
-                }
-                self.index += 1;
-                if self.eat_comment(out) {
-                    return Some(Err(()));
-                }
-                let (ty, ret) = self.parse_expr(true, true, out);
-                if ret || self.eat_comment(out) {
-                    return Some(Err(()));
-                }
-                let param: (Cow<'src, str>, _, _) = (n.into(), loc, Some(ty));
-                if !matches!(
-                    self.current_token(),
-                    Some(Token {
-                        kind: TokenKind::Close(Delim::Paren),
-                        ..
-                    })
-                ) {
-                    let err = self.exp_found("')'");
-                    if self.report(err) {
-                        return Some(Err(()));
+                    if this.eat_comment(out) {
+                        return Err(());
                     }
-                    let next =
-                        self.input[self.index..]
-                            .iter()
-                            .enumerate()
-                            .find_map(|(n, t)| match t.kind {
-                                TokenKind::Keyword(Keyword::Of) => Some((n, 2)),
-                                TokenKind::Close(Delim::Paren) => Some((n, 1)),
-                                TokenKind::Special(SpecialChar::Arrow) => Some((n, 2)),
-                                _ => None,
-                            });
-                    match next {
-                        Some((n, 1)) => {
-                            self.index += n;
-                            break 'param param;
-                        }
-                        Some((n, 2)) => {
-                            self.index += n.saturating_sub(1);
-                            break 'param param;
-                        }
-                        _ => return None,
+                    let (ty, ret) = this.parse_expr(true, false, out);
+                    if ret || this.eat_comment(out) {
+                        return Err(());
                     }
+                    let param: (Cow<'src, str>, _, _) = (n.into(), loc, Some(ty));
+                    Ok(param)
+                });
+                match ret {
+                    Ok(param) => param,
+                    Err(_) => return Some(Err(())),
                 }
-                self.index += 1;
-                param
             }
             _ => {
                 let err = self.exp_found("lambda parameter");
@@ -850,7 +782,7 @@ where
             }
             if let Some(skip) = self.input[self.index..]
                 .iter()
-                .position(|t| t.kind == TokenKind::Special(SpecialChar::Equals))
+                .position(|t| matches!(t.kind, TokenKind::Special(SpecialChar::Equals)))
             {
                 self.index += skip;
             } else {
@@ -891,31 +823,14 @@ where
                 break;
             };
             let tok = if check_semicolon {
-                if tok.kind == TokenKind::Special(SpecialChar::Semicolon) {
+                if matches!(tok.kind, TokenKind::Special(SpecialChar::Semicolon)) {
                     self.index += 1;
                     if self.eat_comment(&mut ast_buf) {
                         erred = true;
                         break;
                     }
                 } else {
-                    let mut depth = 1;
-                    let skip = self.input[self.index..].iter().position(|t| match t.kind {
-                        TokenKind::Open(Delim::Brace) => {
-                            depth += 1;
-                            false
-                        }
-                        TokenKind::Close(Delim::Brace) => {
-                            depth -= 1;
-                            depth == 0
-                        }
-                        TokenKind::Special(SpecialChar::Semicolon) => true,
-                        _ => false,
-                    });
-                    if let Some(skip) = skip {
-                        self.index += skip;
-                    } else {
-                        self.index = self.input.len();
-                    }
+                    self.index = self.input.len()
                 }
                 if let Some(tok) = self.current_token() {
                     tok
@@ -956,7 +871,6 @@ where
                         break;
                     }
                 }
-                TokenKind::Close(Delim::Brace) => break,
                 _ => {
                     let (val, err) = self.parse_expr(true, true, &mut ast_buf);
                     stuff.extend(ast_buf.drain(..).map(Ast));
@@ -1037,6 +951,27 @@ where
     }
 
     fn parse_atom(&mut self, necessary: bool, out: &mut Vec<A::AstBox>) -> (A::AstBox, bool) {
+        match self.parse_ident(false, out) {
+            (Some((id, loc)), erred) => {
+                return (
+                    A::make_box(asts::VarAST {
+                        name: id.into(),
+                        loc,
+                        global: None,
+                    }),
+                    erred,
+                )
+            }
+            (None, true) => {
+                return (
+                    A::make_box(asts::ErrorAST {
+                        loc: self.curr_loc(),
+                    }),
+                    true,
+                )
+            }
+            _ => {}
+        }
         self.index += 1;
         match self.input.get(self.index - 1) {
             Some(&Token {
@@ -1085,134 +1020,25 @@ where
                 false,
             ),
             Some(&Token {
-                kind: TokenKind::Open(Delim::Paren),
-                span: start,
-            }) => match self.input.get(self.index) {
-                Some(&Token {
-                    kind: TokenKind::Close(Delim::Paren),
-                    span: end,
-                }) => {
-                    self.index += 1;
-                    (
-                        A::make_box(asts::NullAST {
-                            loc: start.merge(end),
-                        }),
-                        false,
-                    )
-                }
-                Some(_) => {
-                    self.index -= 1;
-                    if let Some((i, span)) = self.parse_ident(false, out).0 {
-                        return (
-                            A::make_box(asts::VarAST {
-                                name: i.into(),
-                                global: None,
-                                loc: span,
-                            }),
-                            false,
-                        );
-                    }
-                    self.index += 1;
-                    let (ast, err) = self.parse_expr(true, false, out);
-                    if err {
-                        return (
-                            A::make_box(asts::ParenAST {
-                                loc: start.merge(ast.loc()),
-                                inner: ast,
-                            }),
-                            true,
-                        );
-                    }
-                    if self.eat_comment(out) {
-                        return (
-                            A::make_box(asts::ParenAST {
-                                loc: start.merge(ast.loc()),
-                                inner: ast,
-                            }),
-                            true,
-                        );
-                    }
-                    if let Some(&Token {
-                        kind: TokenKind::Close(Delim::Paren),
-                        span,
-                    }) = self.current_token()
-                    {
-                        self.index += 1;
-                        return (
-                            A::make_box(asts::ParenAST {
-                                loc: start.merge(span),
-                                inner: ast,
-                            }),
-                            false,
-                        );
-                    } else {
-                        let err = ParseASTError::UnmatchedDelimeter {
-                            kind: Delim::Paren,
-                            start,
-                            close: false,
-                            span: self.curr_loc(),
-                        };
-                        (
-                            A::make_box(asts::ParenAST {
-                                loc: start.merge(ast.loc()),
-                                inner: ast,
-                            }),
-                            self.report(err),
-                        )
-                    }
-                }
-                None => {
-                    let span = self.curr_loc();
-                    let err = ParseASTError::UnmatchedDelimeter {
-                        kind: Delim::Paren,
-                        start,
-                        span,
-                        close: false,
-                    };
-                    (A::make_box(asts::ErrorAST { loc: span }), self.report(err))
-                }
-            },
-            Some(&Token {
-                kind: TokenKind::Open(Delim::Brace),
+                kind: TokenKind::Paren(ref toks),
                 span,
             }) => {
-                let (inner, erred) = self.parse_stmts();
-                if erred {
-                    let loc = span.merge(inner.loc());
-                    (A::make_box(asts::BraceAST { inner, loc }), true)
+                if toks.is_empty() {
+                    (A::make_box(asts::NullAST { loc: span }), false)
                 } else {
-                    let end = if let Some(&Token {
-                        kind: TokenKind::Close(Delim::Brace),
-                        span,
-                    }) = self.current_token()
-                    {
-                        self.index += 1;
-                        span
-                    } else {
-                        let err = self.exp_found("closing '}'");
-                        if self.report(err) {
-                            let loc = span.merge(inner.loc());
-                            return (A::make_box(asts::BraceAST { inner, loc }), true);
-                        }
-                        let skip = self.input[self.index..]
-                            .iter()
-                            .position(|t| t.kind == TokenKind::Close(Delim::Brace));
-                        if let Some(skip) = skip {
-                            self.index += skip + 1;
-                            self.input[self.index - 1].span
-                        } else {
-                            self.index = self.input.len();
-                            self.curr_loc()
-                        }
-                    };
-                    (
-                        A::make_box(asts::BraceAST {
-                            inner,
-                            loc: span.merge(end),
-                        }),
-                        false,
-                    )
+                    self.index -= 1;
+                    let (inner, erred) =
+                        self.in_tree_here(|mut this| this.parse_expr(true, false, out));
+                    (A::make_box(asts::ParenAST { inner, loc: span }), erred)
                 }
+            }
+            Some(&Token {
+                kind: TokenKind::Brace(_),
+                span,
+            }) => {
+                self.index -= 1;
+                let (inner, erred) = self.in_tree_here(|mut this| this.parse_stmts());
+                (A::make_box(asts::BraceAST { inner, loc: span }), erred)
             }
             _ => {
                 if necessary {

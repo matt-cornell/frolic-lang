@@ -8,7 +8,6 @@ struct Lexer<'src, 'e, F, S: Span> {
     input: &'src [u8],
     index: usize,
     file: F,
-    offset: usize,
     tokens: Vec<Token<'src, S>>,
     errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError<S>>>,
 }
@@ -17,14 +16,12 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
     #[inline]
     pub fn new(
         input: &'src [u8],
-        offset: usize,
         file: F,
         errs: &'e mut dyn ErrorReporter<SourcedError<F, TokenizeError<S>>>,
     ) -> Self {
         Self {
             input,
             file,
-            offset,
             errs,
             index: 0,
             tokens: vec![],
@@ -110,7 +107,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
 
         Some(res.map_err(|(byte, off)| {
             self.report(TokenizeError::InvalidUTF8 {
-                span: S::new(self.offset + off, 1),
+                span: S::new(off, 1),
                 byte,
             })
         }))
@@ -129,11 +126,12 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
             ($tok:expr) => {{
                 self.tokens.push(Token {
                     kind: $tok,
-                    span: S::new(self.index + self.offset, 1),
+                    span: S::new(self.index, 1),
                 });
                 self.index += 1;
             }};
         }
+        let mut group_stack = Vec::new();
         while let Some(ch) = self.next_char(true) {
             let ch = match ch {
                 Ok(ch) => ch,
@@ -150,12 +148,58 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 ';' => single_char!(TokenKind::Special(SpecialChar::Semicolon)),
                 '.' => single_char!(TokenKind::Special(SpecialChar::Dot)),
                 ',' => single_char!(TokenKind::Special(SpecialChar::Comma)),
-                '(' => single_char!(TokenKind::Open(Delim::Paren)),
-                ')' => single_char!(TokenKind::Close(Delim::Paren)),
-                '{' => single_char!(TokenKind::Open(Delim::Brace)),
-                '}' => single_char!(TokenKind::Close(Delim::Brace)),
-                '[' => single_char!(TokenKind::Open(Delim::Bracket)),
-                ']' => single_char!(TokenKind::Close(Delim::Bracket)),
+                '(' | '{' | '[' => {
+                    let tok_idx = self.tokens.len();
+                    group_stack.push((Delim::try_from(ch).unwrap(), tok_idx, self.index));
+                    self.index += 1;
+                }
+                ')' | '}' | ']' => {
+                    self.index += 1;
+                    let kind = Delim::try_from(ch).unwrap();
+                    if let Some((delim, tok_idx, src_idx)) = group_stack.pop() {
+                        if delim == kind {
+                            let toks = self.tokens.split_off(tok_idx);
+                            self.tokens.push(Token {
+                                kind: match kind {
+                                    Delim::Paren => TokenKind::Paren(toks),
+                                    Delim::Brace => TokenKind::Brace(toks),
+                                    Delim::Bracket => TokenKind::Bracket(toks),
+                                },
+                                span: S::range(src_idx, self.index),
+                            });
+                            continue;
+                        } else {
+                            if let Some(&(delim, tok_idx, src_idx)) = group_stack.last() {
+                                if delim == kind {
+                                    group_stack.pop();
+                                    if self.report(TokenizeError::UnmatchedOpenDelim {
+                                        kind: delim,
+                                        span: S::loc(self.index),
+                                        prev: S::new(src_idx, 1),
+                                    }) {
+                                        return;
+                                    }
+                                    let toks = self.tokens.split_off(tok_idx);
+                                    self.tokens.push(Token {
+                                        kind: match kind {
+                                            Delim::Paren => TokenKind::Paren(toks),
+                                            Delim::Brace => TokenKind::Brace(toks),
+                                            Delim::Bracket => TokenKind::Bracket(toks),
+                                        },
+                                        span: S::range(src_idx, self.index),
+                                    });
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                    if self.report(TokenizeError::UnmatchedCloseDelim {
+                        kind,
+                        span: S::new(self.index - 1, 1),
+                    }) {
+                        return;
+                    }
+                }
                 '=' => {
                     if self
                         .input
@@ -175,7 +219,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                     };
                     self.tokens.push(Token {
                         kind: TokenKind::Special(ch),
-                        span: S::new(self.index + self.offset, len),
+                        span: S::new(self.index, len),
                     });
                     self.index += len;
                 }
@@ -241,7 +285,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 ch if unicode_ident::is_xid_start(ch) => self.parse_ident(),
                 ch => {
                     if self.report(TokenizeError::UnexpectedChar {
-                        span: S::new(self.offset + self.index, 1),
+                        span: S::new(self.index, 1),
                         found: ch,
                     }) {
                         return;
@@ -250,54 +294,18 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 }
             }
         }
+        for (kind, _, src_idx) in group_stack.into_iter().rev() {
+            if self.report(TokenizeError::UnmatchedOpenDelim {
+                kind,
+                span: S::loc(self.index),
+                prev: S::new(src_idx, 1),
+            }) {
+                return;
+            }
+        }
     }
 }
 
-#[cfg(feature = "rayon")]
-fn tokenize_impl<
-    F: Copy + Send + Sync,
-    S: SpanConstruct + Send,
-    E: ErrorReporter<SourcedError<F, TokenizeError<S>>> + Copy + Send + Sync,
->(
-    input: &[u8],
-    file: F,
-    errs: E,
-) -> Vec<Token<S>> {
-    const STARTS: &[u8] = b"\n\t !$%&(),.:;@~";
-    dispatch_chunks(
-        input,
-        |offset, input| {
-            input[offset..]
-                .iter()
-                .position(|b| STARTS.contains(b))
-                .map_or(input.len(), |i| i + offset)
-        },
-        move |src, offset| {
-            let mut errs = errs;
-            let mut lex = Lexer::new(src, offset, file, &mut errs);
-            lex.tokenize();
-            lex.tokens
-        },
-        1024,
-    )
-}
-
-#[cfg(feature = "rayon")]
-#[inline(never)]
-pub fn tokenize<
-    I: AsRef<[u8]> + ?Sized,
-    F: Copy + Send + Sync,
-    S: SpanConstruct + Send,
-    E: ErrorReporter<SourcedError<F, TokenizeError<S>>> + Copy + Send + Sync,
->(
-    input: &I,
-    file: F,
-    errs: E,
-) -> Vec<Token<S>> {
-    tokenize_impl::<F, S, E>(input.as_ref(), file, errs)
-}
-
-#[cfg(not(feature = "rayon"))]
 pub fn tokenize<
     I: AsRef<[u8]> + ?Sized,
     F: Copy,
@@ -307,8 +315,8 @@ pub fn tokenize<
     input: &I,
     file: F,
     mut errs: E,
-) -> Vec<Token<SourceSpan>> {
-    let mut lex = Lexer::new(src, offset, file, &mut errs);
+) -> Vec<Token<S>> {
+    let mut lex = Lexer::new(input.as_ref(), file, &mut errs);
     lex.tokenize();
     lex.tokens
 }

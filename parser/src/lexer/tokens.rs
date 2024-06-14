@@ -6,28 +6,6 @@ use strum::*;
 fn bstr_debug<S: AsRef<[u8]>>(bytes: &S, f: &mut Formatter<'_>) -> fmt::Result {
     Debug::fmt(bstr::BStr::new(bytes), f)
 }
-/// A kind of delimiter.
-#[derive(Debug, Clone, Copy, PartialEq, Display)]
-#[strum(serialize_all = "UPPERCASE")]
-pub enum Delim {
-    Paren,
-    Brace,
-    Bracket,
-}
-impl Delim {
-    /// Get the corresponding character. If `is_close`, return the closing character, else the
-    /// opening one.
-    pub const fn get_char(self, is_close: bool) -> char {
-        match (self, is_close) {
-            (Self::Paren, false) => '(',
-            (Self::Paren, true) => ')',
-            (Self::Brace, false) => '{',
-            (Self::Brace, true) => '}',
-            (Self::Bracket, false) => '[',
-            (Self::Bracket, true) => ']',
-        }
-    }
-}
 
 /// A special language keyword.
 #[derive(Debug, Clone, Copy, PartialEq, Display, IntoStaticStr, EnumString)]
@@ -106,7 +84,7 @@ impl AmbigOp {
 
 #[derive(Derivative)]
 #[derivative(Debug, Clone, PartialEq)]
-pub enum TokenKind<'src> {
+pub enum TokenKind<'src, S> {
     /// A comment. Will be `Borrowed` if it's a single comment, or `Owned` if the combination of
     /// multiple.
     Comment(
@@ -116,10 +94,9 @@ pub enum TokenKind<'src> {
     /// An identifier-- an XID start character followed by 0 or more XID continues
     Ident(&'src str),
     Keyword(Keyword),
-    /// `(`, `[`, or `{`
-    Open(Delim),
-    /// `)`, `]`, or `}`
-    Close(Delim),
+    Paren(Vec<Token<'src, S>>),
+    Brace(Vec<Token<'src, S>>),
+    Bracket(Vec<Token<'src, S>>),
     Int(i64),
     Float(f64),
     Char(u32),
@@ -133,7 +110,7 @@ pub enum TokenKind<'src> {
     AmbigOp(AmbigOp),
 }
 
-impl<'src> TokenKind<'src> {
+impl<'src, S> TokenKind<'src, S> {
     /// An empty comment, ignored everywhere
     pub const EMPTY_COMMENT: Self = Self::Comment(Cow::Borrowed(&[]), CommentKind::Ignore);
 
@@ -162,17 +139,8 @@ impl<'src> TokenKind<'src> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token<'src, S> {
-    pub kind: TokenKind<'src>,
+    pub kind: TokenKind<'src, S>,
     pub span: S,
-}
-impl<'src, S> Token<'src, S> {
-    /// Map the span of a token to create a new one.
-    pub fn map_span<T, F: FnOnce(S) -> T>(self, op: F) -> Token<'src, T> {
-        Token {
-            kind: self.kind,
-            span: op(self.span),
-        }
-    }
 }
 impl<S: Span> Located for Token<'_, S> {
     type Span = S;
