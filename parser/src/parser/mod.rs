@@ -254,16 +254,17 @@ where
                         }
                     };
                     this.index += 1;
-                    let erred = necessary && if let Some(tok) = this.current_token().cloned() {
-                        let span = this.curr_span();
-                        this.report(ParseASTError::ExpectedFound {
-                            ex: "closing ')'",
-                            span,
-                            found: Some(tok.kind),
-                        })
-                    } else {
-                        false
-                    };
+                    let erred = necessary
+                        && if let Some(tok) = this.current_token().cloned() {
+                            let span = this.curr_span();
+                            this.report(ParseASTError::ExpectedFound {
+                                ex: "closing ')'",
+                                span,
+                                found: Some(tok.kind),
+                            })
+                        } else {
+                            false
+                        };
                     ((Some((op, span)), erred), false)
                 });
                 if rw {

@@ -30,7 +30,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 return;
             } else {
                 let comment = std::mem::replace(comment, Cow::Borrowed(&[]));
-                self.tokens.push(Token {
+                self.push_token(Token {
                     kind: TokenKind::Comment(comment, *kind),
                     span: S::range(*start, *end),
                 });
@@ -115,7 +115,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                                 } else {
                                     let comment =
                                         std::mem::replace(&mut comment, Cow::Borrowed(&[]));
-                                    self.tokens.push(Token {
+                                    self.push_token(Token {
                                         kind: TokenKind::Comment(comment, kind),
                                         span: S::range(start, end),
                                     });
@@ -142,7 +142,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         }
         if let Some((start, end, kind)) = data {
             if !comment.is_empty() {
-                self.tokens.push(Token {
+                self.push_token(Token {
                     kind: TokenKind::Comment(comment, kind),
                     span: S::range(start, end),
                 });
@@ -172,10 +172,16 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             .last();
         self.index = idx;
         let ident = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
-        if ident == "let" {
+        if let Some(Ok('!')) = self.next_char(true) {
+            self.index += 1;
+            self.push_token(Token {
+                kind: TokenKind::UnboundMacro(Cow::Borrowed(ident)),
+                span: S::range(start, self.index),
+            });
+        } else if ident == "let" {
             self.parse_let_op();
         } else {
-            self.tokens.push(Token {
+            self.push_token(Token {
                 kind: TokenKind::from_ident(ident),
                 span: S::range(start, self.index),
             });

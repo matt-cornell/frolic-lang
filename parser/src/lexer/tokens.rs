@@ -108,6 +108,8 @@ pub enum TokenKind<'src, S> {
     PreOp(&'src str),
     InfOp(&'src str),
     AmbigOp(AmbigOp),
+    UnboundMacro(Cow<'src, str>),
+    BoundMacro(Cow<'src, str>, Box<Token<'src, S>>),
 }
 
 impl<'src, S> TokenKind<'src, S> {

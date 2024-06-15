@@ -10,7 +10,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             + 1;
         self.index += len;
         let op = unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) };
-        self.tokens.push(Token {
+        self.push_token(Token {
             kind: if op == "->" {
                 TokenKind::Special(SpecialChar::Arrow)
             } else {
@@ -27,7 +27,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             .unwrap_or(self.input.len() - self.index - 1)
             + 1;
         self.index += len;
-        self.tokens.push(Token {
+        self.push_token(Token {
             kind: TokenKind::PreOp(unsafe {
                 std::str::from_utf8_unchecked(&self.input[start..self.index])
             }),
@@ -42,13 +42,13 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             .position(|c| !b"$&*%+-/=<>@^|!.:?~".contains(c))
             .unwrap_or(self.input.len() - self.index);
         if len == 0 {
-            self.tokens.push(Token {
+            self.push_token(Token {
                 kind: TokenKind::Keyword(Keyword::Let),
                 span: S::new(start, 3),
             });
         } else {
             self.index += len;
-            self.tokens.push(Token {
+            self.push_token(Token {
                 kind: TokenKind::LetOp(unsafe {
                     std::str::from_utf8_unchecked(&self.input[start..self.index])
                 }),

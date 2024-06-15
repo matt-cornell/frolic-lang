@@ -11,7 +11,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         let base = kind as u8 as i64;
         loop {
             let Some(&c) = self.input.get(self.index) else {
-                self.tokens.push(Token {
+                self.push_token(Token {
                     kind: TokenKind::Int(int * mul),
                     span: S::range(start, self.index),
                 });
@@ -44,7 +44,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 b'.' if kind == LitKind::Decimal => break,
                 _ => {
                     self.index -= 1;
-                    self.tokens.push(Token {
+                    self.push_token(Token {
                         kind: TokenKind::Int(int * mul),
                         span: S::range(start, self.index),
                     });
@@ -59,7 +59,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             mul *= 0.1;
             self.index += 1;
         }
-        self.tokens.push(Token {
+        self.push_token(Token {
             kind: TokenKind::Float(float * if neg { -1.0 } else { 1.0 }),
             span: S::range(start, self.index),
         });
@@ -87,7 +87,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 Some(&b'x') => self.parse_num_impl(start, LitKind::Hex, neg),
                 Some(b'0'..=b'9') => self.parse_num_impl(start, LitKind::Decimal, neg),
                 _ => {
-                    self.tokens.push(Token {
+                    self.push_token(Token {
                         kind: TokenKind::Int(0),
                         span: S::new(start, 1),
                     });
@@ -121,7 +121,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         };
         let val = match ch {
             '\'' => {
-                self.tokens.push(Token {
+                self.push_token(Token {
                     kind: TokenKind::Char(0),
                     span: S::new(start, 2),
                 });
@@ -223,7 +223,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 });
             }
         }
-        self.tokens.push(Token {
+        self.push_token(Token {
             kind: TokenKind::Char(val),
             span: S::range(start, self.index),
         });
@@ -324,7 +324,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 }
                 last = self.index;
             } else {
-                self.tokens.push(Token {
+                self.push_token(Token {
                     kind: TokenKind::String(out),
                     span: S::range(start, self.index),
                 });
@@ -334,7 +334,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
                 });
             }
         }
-        self.tokens.push(Token {
+        self.push_token(Token {
             kind: TokenKind::String(out),
             span: S::range(start, self.index),
         });
