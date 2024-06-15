@@ -24,6 +24,6 @@ supports-color = { version = "3.0.0", optional = true }
 [features]
 default = ["rayon", "fmt", "serde"]
 
-rayon = ["frolic-parser/rayon", "frolic-ir/rayon"]
+rayon = ["frolic-ir/rayon"]
 fmt = ["frolic-fmt", "supports-color"]
 serde = ["serde_json", "frolic-fmt?/serde"]
