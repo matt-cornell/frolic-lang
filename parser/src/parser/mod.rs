@@ -198,15 +198,16 @@ where
         &mut self,
         necessary: bool,
         out: &mut Vec<A::AstBox>,
-    ) -> (Option<(&'src str, S)>, bool) {
+    ) -> (Option<(Cow<'src, str>, S)>, bool) {
         let orig = self.index;
         match self.current_token() {
             Some(&Token {
-                kind: TokenKind::Ident(i),
+                kind: TokenKind::Ident(ref i),
                 span,
             }) => {
+                let name = i.clone();
                 self.index += 1;
-                (Some((i, span)), false)
+                (Some((name, span)), false)
             }
             Some(&Token {
                 kind: TokenKind::Paren(_),
@@ -217,22 +218,22 @@ where
                         return ((None, true), false);
                     }
                     let op = match this.current_token() {
-                        Some(&Token {
+                        Some(Token {
                             kind:
                                 TokenKind::PreOp(op)
                                 | TokenKind::InfOp(op)
                                 | TokenKind::LetOp(op)
                                 | TokenKind::Ident(op),
                             ..
-                        }) => op,
+                        }) => op.clone(),
                         Some(&Token {
                             kind: TokenKind::AmbigOp(op),
                             ..
-                        }) => op.as_inf_str(),
+                        }) => op.as_inf_str().into(),
                         Some(&Token {
                             kind: TokenKind::Keyword(kw),
                             ..
-                        }) => kw.as_str(),
+                        }) => kw.as_str().into(),
                         _ => {
                             if necessary {
                                 let tok = this.current_token().cloned();

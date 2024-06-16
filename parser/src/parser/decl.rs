@@ -202,7 +202,7 @@ where
                         let (n, loc) = match this.parse_ident(true, out) {
                             (_, true) => return true,
                             (Some(r), false) => r,
-                            (None, false) => ("<error>", this.curr_loc()),
+                            (None, false) => ("<error>".into(), this.curr_loc()),
                         };
                         if this.eat_comment(out) {
                             return true;
@@ -457,7 +457,7 @@ where
                         )
                     {
                         return (
-                            Some((GlobTerm::Ident(Cow::Borrowed(old_name)), old_span)),
+                            Some((GlobTerm::Ident(old_name), old_span)),
                             erred,
                         );
                     }
@@ -467,9 +467,9 @@ where
                         (
                             Some((
                                 GlobTerm::Alias {
-                                    old_name: Cow::Borrowed(old_name),
+                                    old_name,
                                     old_span,
-                                    new_name: Cow::Borrowed(new_name),
+                                    new_name,
                                 },
                                 old_span.merge(new_span),
                             )),
@@ -477,7 +477,7 @@ where
                         )
                     } else {
                         (
-                            Some((GlobTerm::Ident(Cow::Borrowed(old_name)), old_span)),
+                            Some((GlobTerm::Ident(old_name), old_span)),
                             erred,
                         )
                     }
@@ -513,7 +513,6 @@ where
                 }
             }
             start
-                .map(|(i, s)| (Cow::Borrowed(i), s))
                 .into_iter()
                 .collect()
         } else {

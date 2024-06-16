@@ -8,9 +8,10 @@ fn matches_prec<S>(op: &TokenKind<S>, lvl: u8) -> bool {
         TokenKind::AmbigOp(AmbigOp::Plus | AmbigOp::Minus) => lvl == 1 || lvl == 5,
         TokenKind::AmbigOp(AmbigOp::And) => lvl == 1 || lvl == 7,
         TokenKind::AmbigOp(AmbigOp::Star) => lvl == 1 || lvl == 4,
-        TokenKind::InfOp("&&") => lvl == 9,
-        TokenKind::InfOp("||") => lvl == 10,
-        TokenKind::InfOp(op) => op
+        TokenKind::InfOp(op) => match &**op {
+            "&&" => lvl == 9,
+            "||" => lvl == 10,
+            _ => op
             .as_bytes()
             .first()
             .and_then(|ch| match ch {
@@ -22,6 +23,7 @@ fn matches_prec<S>(op: &TokenKind<S>, lvl: u8) -> bool {
                 _ => None,
             })
             .map_or(false, |l| l == lvl),
+        }
         TokenKind::Special(SpecialChar::Arrow) => lvl == 11,
         _ => false,
     }
@@ -117,7 +119,7 @@ where
     fn parse_prefix_expr(
         &mut self,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         let start = prefixes.len();
@@ -137,17 +139,17 @@ where
                     }
                 }
                 Some(&Token {
-                    kind: TokenKind::PreOp(op),
+                    kind: TokenKind::PreOp(ref op),
                     span,
                 }) => {
-                    prefixes.push((op, span));
+                    prefixes.push((op.clone(), span));
                     self.index += 1;
                 }
                 Some(&Token {
                     kind: TokenKind::AmbigOp(op),
                     span,
                 }) => {
-                    prefixes.push((op.as_pre_str(), span));
+                    prefixes.push((op.as_pre_str().into(), span));
                     self.index += 1;
                 }
                 _ => break,
@@ -171,8 +173,8 @@ where
         &mut self,
         lvl: u8,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         let start = self.index;
@@ -212,8 +214,8 @@ where
         &mut self,
         lvl: u8,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         let start_idx = infixes.len();
@@ -247,7 +249,7 @@ where
         };
         ast = infixes
             .drain(start_idx..)
-            .rfold(ast, |rhs, (op, loc, lhs)| match op {
+            .rfold(ast, |rhs, (op, loc, lhs)| match &*op {
                 "->" => A::make_box(asts::FunctionTypeAST {
                     oploc: loc,
                     arg: lhs,
@@ -278,8 +280,8 @@ where
     fn parse_fns_expr(
         &mut self,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         let start = self.index;
@@ -319,8 +321,8 @@ where
     fn parse_types_expr(
         &mut self,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         let (val, err) = self.parse_fns_expr(necessary, prefixes, infixes, out);
@@ -351,8 +353,8 @@ where
     fn parse_cond_expr(
         &mut self,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         if let Some(&Token {
@@ -564,8 +566,8 @@ where
         &mut self,
         lvl: u8,
         necessary: bool,
-        prefixes: &mut SmallVec<[(&'src str, S); 1]>,
-        infixes: &mut SmallVec<[(&'src str, S, A::AstBox); 1]>,
+        prefixes: &mut SmallVec<[(Cow<'src, str>, S); 1]>,
+        infixes: &mut SmallVec<[(Cow<'src, str>, S, A::AstBox); 1]>,
         out: &mut Vec<A::AstBox>,
     ) -> (A::AstBox, bool) {
         match lvl {
@@ -600,8 +602,8 @@ where
             return self.report(err).then_some(Err(()));
         };
         let (arg, aloc, argty) = match tok.kind {
-            TokenKind::Ident(n) => {
-                let param = (n.into(), tok.span, None);
+            TokenKind::Ident(ref n) => {
+                let param = (n.clone(), tok.span, None);
                 self.index += 1;
                 param
             }
@@ -613,7 +615,7 @@ where
                     let (n, loc) = match this.parse_ident(true, out) {
                         (_, true) => return Err(()),
                         (Some(r), false) => r,
-                        (None, false) => ("<error>", this.curr_loc()),
+                        (None, false) => ("<error>".into(), this.curr_loc()),
                     };
                     if this.eat_comment(out) {
                         return Err(());
@@ -647,8 +649,7 @@ where
                     if ret || this.eat_comment(out) {
                         return Err(());
                     }
-                    let param: (Cow<'src, str>, _, _) = (n.into(), loc, Some(ty));
-                    Ok(param)
+                    Ok((n, loc, Some(ty)))
                 });
                 match ret {
                     Ok(param) => param,
@@ -729,7 +730,7 @@ where
         }
         self.index += 1;
         let (name, nloc) = match self.parse_ident(true, out) {
-            (Some((name, nloc)), false) => (name.into(), nloc),
+            (Some((name, nloc)), false) => (name, nloc),
             (Some((name, nloc)), true) => {
                 return (
                     LetOpStub {
@@ -952,10 +953,10 @@ where
 
     fn parse_atom(&mut self, necessary: bool, out: &mut Vec<A::AstBox>) -> (A::AstBox, bool) {
         match self.parse_ident(false, out) {
-            (Some((id, loc)), erred) => {
+            (Some((name, loc)), erred) => {
                 return (
                     A::make_box(asts::VarAST {
-                        name: id.into(),
+                        name,
                         loc,
                         global: None,
                     }),
@@ -978,12 +979,12 @@ where
                 kind: TokenKind::Special(SpecialChar::Dot),
                 span,
             }) => {
-                let (Some((id, loc)), ret) = self.parse_ident(true, out) else {
+                let (Some((name, loc)), ret) = self.parse_ident(true, out) else {
                     unreachable!()
                 };
                 (
                     A::make_box(asts::VarAST {
-                        name: id.into(),
+                        name,
                         global: Some(loc),
                         loc: span,
                     }),
@@ -991,11 +992,11 @@ where
                 )
             }
             Some(&Token {
-                kind: TokenKind::Ident(i),
+                kind: TokenKind::Ident(ref i),
                 span,
             }) => (
                 A::make_box(asts::VarAST {
-                    name: i.into(),
+                    name: i.clone(),
                     global: None,
                     loc: span,
                 }),

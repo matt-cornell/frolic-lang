@@ -14,7 +14,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             kind: if op == "->" {
                 TokenKind::Special(SpecialChar::Arrow)
             } else {
-                TokenKind::InfOp(op)
+                TokenKind::InfOp(op.into())
             },
             span: S::new(start, len),
         });
@@ -30,7 +30,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         self.push_token(Token {
             kind: TokenKind::PreOp(unsafe {
                 std::str::from_utf8_unchecked(&self.input[start..self.index])
-            }),
+            }.into()),
             span: S::new(start, len),
         });
     }
@@ -51,7 +51,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             self.push_token(Token {
                 kind: TokenKind::LetOp(unsafe {
                     std::str::from_utf8_unchecked(&self.input[start..self.index])
-                }),
+                }.into()),
                 span: S::new(start, len + 3),
             });
         }

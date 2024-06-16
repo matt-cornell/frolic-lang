@@ -92,7 +92,7 @@ pub enum TokenKind<'src, S> {
         CommentKind,
     ),
     /// An identifier-- an XID start character followed by 0 or more XID continues
-    Ident(&'src str),
+    Ident(Cow<'src, str>),
     Keyword(Keyword),
     Paren(Vec<Token<'src, S>>),
     Brace(Vec<Token<'src, S>>),
@@ -104,9 +104,9 @@ pub enum TokenKind<'src, S> {
     /// sequences.
     String(#[derivative(Debug(format_with = "bstr_debug"))] Cow<'src, [u8]>),
     Special(SpecialChar),
-    LetOp(&'src str),
-    PreOp(&'src str),
-    InfOp(&'src str),
+    LetOp(Cow<'src, str>),
+    PreOp(Cow<'src, str>),
+    InfOp(Cow<'src, str>),
     AmbigOp(AmbigOp),
     UnboundMacro(Cow<'src, str>),
     BoundMacro(Cow<'src, str>, Box<Token<'src, S>>),
@@ -118,7 +118,7 @@ impl<'src, S> TokenKind<'src, S> {
 
     /// Convenience method to get either a keyword or ident
     #[inline]
-    pub fn from_ident(i: &'src str) -> Self {
+    pub fn from_ident(i: Cow<'src, str>) -> Self {
         if let Ok(kw) = i.parse() {
             Self::Keyword(kw)
         } else {
@@ -129,13 +129,58 @@ impl<'src, S> TokenKind<'src, S> {
     /// Get this as a string for an infix operator. Matches infix operators, ambiguous operators,
     /// and `->`.
     #[inline]
-    pub fn inf_op_str(&self) -> Option<&'src str> {
+    pub fn inf_op_str(&self) -> Option<Cow<'src, str>> {
         match self {
-            Self::InfOp(op) => Some(op),
-            Self::AmbigOp(op) => Some(op.as_inf_str()),
-            Self::Special(SpecialChar::Arrow) => Some("->"),
+            Self::InfOp(op) => Some(op.clone()),
+            Self::AmbigOp(op) => Some(op.as_inf_str().into()),
+            Self::Special(SpecialChar::Arrow) => Some("->".into()),
             _ => None,
         }
+    }
+
+    pub fn make_owned(&mut self) -> &mut TokenKind<'static, S> {
+        match self {
+            Self::Paren(ts) | Self::Brace(ts) | Self::Bracket(ts) => ts.iter_mut().for_each(|t| {
+                t.kind.make_owned();
+            }),
+            Self::Comment(b, _) | Self::String(b) => drop(b.to_mut()),
+            Self::Ident(s)
+            | Self::LetOp(s)
+            | Self::PreOp(s)
+            | Self::InfOp(s)
+            | Self::UnboundMacro(s) => drop(s.to_mut()),
+            Self::BoundMacro(s, i) => {
+                s.to_mut();
+                i.kind.make_owned();
+            },
+            _ => {}
+        }
+        unsafe { std::mem::transmute::<&mut Self, &mut TokenKind<'static, S>>(self) }
+    }
+    fn map_span_impl<T>(self, f: &mut dyn FnMut(S) -> T) -> TokenKind<'src, T> {
+        use TokenKind::*;
+        match self {
+            Comment(c, k) => Comment(c, k),
+            Ident(i) => Ident(i),
+            Keyword(kw) => Keyword(kw),
+            Paren(ts) => Paren(ts.into_iter().map(|t| t.map_span_impl(f)).collect()),
+            Brace(ts) => Brace(ts.into_iter().map(|t| t.map_span_impl(f)).collect()),
+            Bracket(ts) => Bracket(ts.into_iter().map(|t| t.map_span_impl(f)).collect()),
+            Int(v) => Int(v),
+            Float(v) => Float(v),
+            Char(v) => Char(v),
+            String(v) => String(v),
+            Special(s) => Special(s),
+            LetOp(o) => LetOp(o),
+            PreOp(o) => PreOp(o),
+            InfOp(o) => InfOp(o),
+            AmbigOp(o) => AmbigOp(o),
+            UnboundMacro(n) => UnboundMacro(n),
+            BoundMacro(n, t) => BoundMacro(n, Box::new(t.map_span(f))),
+        }
+    }
+    pub fn map_span<T, F: FnMut(S) -> T>(self, mut f: F) -> TokenKind<'src, T> {
+        self.map_span_impl(&mut f)
     }
 }
 
@@ -143,6 +188,31 @@ impl<'src, S> TokenKind<'src, S> {
 pub struct Token<'src, S> {
     pub kind: TokenKind<'src, S>,
     pub span: S,
+}
+impl<'src, S> Token<'src, S> {
+    /// Take ownership of all data in this token.
+    pub fn make_owned(&mut self) -> &mut Token<'static, S> {
+        self.kind.make_owned();
+        unsafe { std::mem::transmute::<&mut Self, &mut Token<'static, S>>(self) }
+    }
+    pub fn into_static(mut self) -> Token<'static, S> {
+        self.make_owned();
+        unsafe { std::mem::transmute::<Self, Token<'static, S>>(self) }
+    }
+    pub fn into_static_boxed(mut self: Box<Self>) -> Box<Token<'static, S>> {
+        self.make_owned();
+        unsafe { std::mem::transmute::<Box<Self>, Box<Token<'static, S>>>(self) }
+    }
+
+    fn map_span_impl<T>(self, f: &mut dyn FnMut(S) -> T) -> Token<'src, T> {
+        Token {
+            span: f(self.span),
+            kind: self.kind.map_span_impl(f),
+        }
+    }
+    pub fn map_span<T, F: FnMut(S) -> T>(self, mut f: F) -> Token<'src, T> {
+        self.map_span_impl(&mut f)
+    }
 }
 impl<S: Span> Located for Token<'_, S> {
     type Span = S;

@@ -94,23 +94,68 @@ pub enum TokenizeError<S: Span> {
     },
     #[error("unmatched opening {kind}")]
     UnmatchedOpenDelim {
-        kind: Delim,
         #[label("expected here")]
         span: S,
         #[label("opened here")]
         prev: S,
+        kind: Delim,
     },
     #[error("unmatched closing {kind}")]
     UnmatchedCloseDelim {
-        kind: Delim,
         #[label("expected here")]
         span: S,
+        kind: Delim,
     },
     #[error("expected {} brace in unicode escape code", if *.close {"closing"} else {"opening"})]
     ExpectedUnicodeBrace {
-        close: bool,
         #[label("found {found:?}")]
         span: S,
         found: char,
+        close: bool,
     },
+    #[error("macro without argument")]
+    UnboundMacro { #[label] span: S }
+}
+
+impl<S: Span> TokenizeError<S> {
+    pub fn map_span<T: Span, F: FnMut(S) -> T>(self, mut f: F) -> TokenizeError<T> {
+        use TokenizeError::*;
+        match self {
+            UnexpectedChar { span, found } => UnexpectedChar {
+                span: f(span),
+                found,
+            },
+            InvalidCharInLit { span, found, kind } => InvalidCharInLit {
+                span: f(span),
+                found,
+                kind,
+            },
+            InvalidUTF8 { span, byte } => InvalidUTF8 {
+                span: f(span),
+                byte,
+            },
+            UnclosedMultiline { span, end } => UnclosedMultiline { span: f(span), end },
+            UnclosedCharLit { span, end } => UnclosedCharLit { span: f(span), end },
+            UnclosedStrLit { span, end } => UnclosedStrLit { span: f(span), end },
+            UnknownEscapeCode { span, code } => UnknownEscapeCode {
+                span: f(span),
+                code,
+            },
+            UnmatchedOpenDelim { span, prev, kind } => UnmatchedOpenDelim {
+                span: f(span),
+                prev: f(prev),
+                kind,
+            },
+            UnmatchedCloseDelim { span, kind } => UnmatchedCloseDelim {
+                span: f(span),
+                kind,
+            },
+            ExpectedUnicodeBrace { span, found, close } => ExpectedUnicodeBrace {
+                span: f(span),
+                found,
+                close,
+            },
+            UnboundMacro { span } => UnboundMacro { span: f(span) },
+        }
+    }
 }

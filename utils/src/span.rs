@@ -3,6 +3,31 @@ use std::fmt::{self, Debug, Formatter};
 use std::rc::Rc;
 use std::sync::Arc;
 
+/// Span-like ZST that panics if you try to access anything in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DummySpan;
+impl From<DummySpan> for miette::SourceSpan {
+    fn from(_value: DummySpan) -> Self {
+        panic!("attempted to use a DummySpan")
+    }
+}
+impl Span for DummySpan {
+    fn merge(self, _other: Self) -> Self {
+        self
+    }
+    fn offset(self) -> usize {
+        panic!("attempted to use a DummySpan")
+    }
+    fn len(self) -> usize {
+        panic!("attempted to use a DummySpan")
+    }
+}
+impl SpanConstruct for DummySpan {
+    fn new(_offset: usize, _len: usize) -> Self {
+        DummySpan
+    }
+}
+
 /// Like a `SourceSpan`, but with a nicer `Debug`
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PrettySpan {
@@ -94,24 +119,3 @@ pub trait Located {
 
     fn loc(&self) -> Self::Span;
 }
-// impl<T: Located + ?Sized> Located for Box<T> {
-//     type Span = T::Span;
-
-//     fn loc(&self) -> Self::Span {
-//         T::loc(self)
-//     }
-// }
-// impl<T: Located + ?Sized> Located for Rc<T> {
-//     type Span = T::Span;
-
-//     fn loc(&self) -> Self::Span {
-//         T::loc(self)
-//     }
-// }
-// impl<T: Located + ?Sized> Located for Arc<T> {
-//     type Span = T::Span;
-
-//     fn loc(&self) -> Self::Span {
-//         T::loc(self)
-//     }
-// }

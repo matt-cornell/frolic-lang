@@ -12,6 +12,7 @@ derivative.workspace = true
 frolic-ast.workspace = true
 frolic-utils.workspace = true
 miette.workspace = true
+mlua.workspace = true
 smallvec.workspace = true
 strum.workspace = true
 thiserror.workspace = true

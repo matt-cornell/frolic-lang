@@ -4,8 +4,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use thiserror::Error;
 
 /// Helper formatting struct, prints "end of input" if given None and for trees, prints an elipsis
-struct FormatFound<'a, 'src, S>(&'a Option<TokenKind<'src, S>>);
-impl<S: Debug> Display for FormatFound<'_, '_, S> {
+pub struct FormatToken<'a, 'src, S>(&'a Option<TokenKind<'src, S>>);
+impl<S: Debug> Display for FormatToken<'_, '_, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             None => f.write_str("end of input"),
@@ -37,7 +37,7 @@ pub enum ParseASTError<'src, S: Span> {
     #[error("Expected {ex}")]
     ExpectedFound {
         ex: &'static str,
-        #[label("found {}", FormatFound(.found))]
+        #[label("found {}", FormatToken(.found))]
         span: S,
         found: Option<TokenKind<'src, S>>,
     },

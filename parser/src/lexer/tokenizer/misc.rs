@@ -182,7 +182,7 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             self.parse_let_op();
         } else {
             self.push_token(Token {
-                kind: TokenKind::from_ident(ident),
+                kind: TokenKind::from_ident(Cow::Borrowed(ident)),
                 span: S::range(start, self.index),
             });
         }

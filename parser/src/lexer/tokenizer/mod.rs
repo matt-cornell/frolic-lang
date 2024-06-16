@@ -331,6 +331,7 @@ impl<'src, 'e, F: Copy, S: SpanConstruct> Lexer<'src, 'e, F, S> {
                 return true;
             }
         }
+        false
     }
 }
 
@@ -346,12 +347,14 @@ pub fn tokenize<
 ) -> Vec<Token<S>> {
     let mut lex = Lexer::new(input.as_ref(), file, &mut errs);
     let erred = lex.tokenize();
-    if let Some(&Token {
-        kind: TokenKind::UnboundMacro(_),
-        span,
-    }) = lex.tokens.last()
-    {
-        lex.report(TokenizeError::UnboundMacro { span });
+    if !erred {
+        if let Some(&Token {
+            kind: TokenKind::UnboundMacro(_),
+            span,
+        }) = lex.tokens.last()
+        {
+            lex.report(TokenizeError::UnboundMacro { span });
+        }
     }
     lex.tokens.retain(|t| {
         !matches!(
