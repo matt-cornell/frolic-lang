@@ -114,7 +114,10 @@ pub enum TokenizeError<S: Span> {
         close: bool,
     },
     #[error("macro without argument")]
-    UnboundMacro { #[label] span: S }
+    UnboundMacro {
+        #[label]
+        span: S,
+    },
 }
 
 impl<S: Span> TokenizeError<S> {

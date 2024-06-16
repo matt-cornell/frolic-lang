@@ -5,7 +5,7 @@ use lexer::tokens::*;
 use std::borrow::Cow;
 
 pub mod lexer;
-//pub mod macros;
+pub mod macros;
 pub mod parser;
 
 pub mod prelude {

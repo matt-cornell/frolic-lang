@@ -12,18 +12,18 @@ fn matches_prec<S>(op: &TokenKind<S>, lvl: u8) -> bool {
             "&&" => lvl == 9,
             "||" => lvl == 10,
             _ => op
-            .as_bytes()
-            .first()
-            .and_then(|ch| match ch {
-                b'*' | b'/' | b'%' => Some(4),
-                b'+' | b'-' => Some(5),
-                b'@' | b'^' => Some(6),
-                b'&' | b'|' | b'$' => Some(7),
-                b'=' | b'<' | b'>' => Some(8),
-                _ => None,
-            })
-            .map_or(false, |l| l == lvl),
-        }
+                .as_bytes()
+                .first()
+                .and_then(|ch| match ch {
+                    b'*' | b'/' | b'%' => Some(4),
+                    b'+' | b'-' => Some(5),
+                    b'@' | b'^' => Some(6),
+                    b'&' | b'|' | b'$' => Some(7),
+                    b'=' | b'<' | b'>' => Some(8),
+                    _ => None,
+                })
+                .map_or(false, |l| l == lvl),
+        },
         TokenKind::Special(SpecialChar::Arrow) => lvl == 11,
         _ => false,
     }

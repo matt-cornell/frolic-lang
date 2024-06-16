@@ -28,9 +28,9 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
             + 1;
         self.index += len;
         self.push_token(Token {
-            kind: TokenKind::PreOp(unsafe {
-                std::str::from_utf8_unchecked(&self.input[start..self.index])
-            }.into()),
+            kind: TokenKind::PreOp(
+                unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) }.into(),
+            ),
             span: S::new(start, len),
         });
     }
@@ -49,9 +49,9 @@ impl<'src, F: Copy, S: SpanConstruct> Lexer<'src, '_, F, S> {
         } else {
             self.index += len;
             self.push_token(Token {
-                kind: TokenKind::LetOp(unsafe {
-                    std::str::from_utf8_unchecked(&self.input[start..self.index])
-                }.into()),
+                kind: TokenKind::LetOp(
+                    unsafe { std::str::from_utf8_unchecked(&self.input[start..self.index]) }.into(),
+                ),
                 span: S::new(start, len + 3),
             });
         }

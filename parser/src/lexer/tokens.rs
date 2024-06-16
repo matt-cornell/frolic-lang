@@ -152,11 +152,20 @@ impl<'src, S> TokenKind<'src, S> {
             Self::BoundMacro(s, i) => {
                 s.to_mut();
                 i.kind.make_owned();
-            },
+            }
             _ => {}
         }
         unsafe { std::mem::transmute::<&mut Self, &mut TokenKind<'static, S>>(self) }
     }
+    pub fn into_static(mut self) -> TokenKind<'static, S> {
+        self.make_owned();
+        unsafe { std::mem::transmute::<Self, TokenKind<'static, S>>(self) }
+    }
+    pub fn into_static_boxed(mut self: Box<Self>) -> Box<TokenKind<'static, S>> {
+        self.make_owned();
+        unsafe { std::mem::transmute::<Box<Self>, Box<TokenKind<'static, S>>>(self) }
+    }
+
     fn map_span_impl<T>(self, f: &mut dyn FnMut(S) -> T) -> TokenKind<'src, T> {
         use TokenKind::*;
         match self {

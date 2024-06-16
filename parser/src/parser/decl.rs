@@ -456,10 +456,7 @@ where
                             })
                         )
                     {
-                        return (
-                            Some((GlobTerm::Ident(old_name), old_span)),
-                            erred,
-                        );
+                        return (Some((GlobTerm::Ident(old_name), old_span)), erred);
                     }
                     self.index += 1;
                     let (id, erred) = self.parse_ident(true, out);
@@ -476,10 +473,7 @@ where
                             erred,
                         )
                     } else {
-                        (
-                            Some((GlobTerm::Ident(old_name), old_span)),
-                            erred,
-                        )
+                        (Some((GlobTerm::Ident(old_name), old_span)), erred)
                     }
                 } else {
                     (None, erred)
@@ -512,9 +506,7 @@ where
                     return (None, erred);
                 }
             }
-            start
-                .into_iter()
-                .collect()
+            start.into_iter().collect()
         } else {
             Vec::new()
         };
