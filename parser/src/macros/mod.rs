@@ -55,6 +55,19 @@ pub enum MacroSource<F> {
     String(String),
     Token(F),
 }
+impl<F: miette::SourceCode> miette::SourceCode for MacroSource<F> {
+    fn read_span<'a>(
+        &'a self,
+        span: &miette::SourceSpan,
+        clb: usize,
+        cla: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        match self {
+            Self::String(s) => s.read_span(span, clb, cla),
+            Self::Token(f) => f.read_span(span, clb, cla),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Error, Diagnostic)]
 pub enum MacroError<S: Span> {
@@ -80,13 +93,22 @@ pub enum MacroError<S: Span> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ExpandContext<'src, 'a> {
+pub struct ExpandContext<'src, 'a, 'lua> {
     /// Source code used to parse this
     frolic_source: &'src [u8],
     /// Macro lookup table
-    lookup: &'a HashMap<Cow<'src, str>, mlua::Function<'a>>,
+    lookup: &'a HashMap<Cow<'src, str>, mlua::Function<'lua>>,
     /// Expand `lazy!` macros. Should be true for non-internal calls.
     expand_lazy: bool,
+}
+
+impl<'lua> mlua::IntoLua<'lua> for ExpandContext<'_, '_, 'lua> {
+    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        let out = lua.create_table_with_capacity(0, 2)?;
+        out.set("source", lua.create_string(self.frolic_source)?)?;
+        out.set("macros", self.lookup.clone())?;
+        Ok(mlua::Value::Table(out))
+    }
 }
 
 mod private {
@@ -142,14 +164,16 @@ impl<S> MaybeWrapped for MacroSpan<S> {
 
 fn expand_single_token<'src, S: Span + MaybeWrapped>(
     tok: &mut Token<'src, S>,
-    ctx: &ExpandContext<'src, '_>,
+    ctx: &ExpandContext<'src, '_, '_>,
 ) -> mlua::Result<()>
 where
-    S::ToWrap: Span + Send + Sync,
+    S::ToWrap: Span + Send + Sync + 'static,
 {
-    let TokenKind::BoundMacro(..) = tok.kind else {
-        return Ok(());
-    };
+    match &mut tok.kind {
+        TokenKind::BoundMacro(..) => {},
+        TokenKind::Paren(ts) | TokenKind::Brace(ts) | TokenKind::Bracket(ts) => return ts.iter_mut().try_for_each(|t| expand_single_token(t, ctx)),
+        _ => return Ok(()),
+    }
     let TokenKind::BoundMacro(name, mut arg) =
         std::mem::replace(&mut tok.kind, TokenKind::Brace(Vec::new()))
     else {
@@ -237,8 +261,7 @@ where
                     span: span.wrap(),
                 }));
             };
-            arg.map_span(MaybeWrapped::wrap);
-            todo!()
+            *tok = f.call((arg.map_span(MaybeWrapped::wrap).into_static(), *ctx))?;
         }
     }
     Ok(())
@@ -247,11 +270,11 @@ where
 pub fn fold_macros_inner<'src, F: Copy, S: Span + MaybeWrapped>(
     input: &mut [Token<'src, S>],
     file: F,
-    ctx: &ExpandContext<'src, '_>,
+    ctx: &ExpandContext<'src, '_, '_>,
     errs: &mut dyn ErrorReporter<SourcedError<MacroSource<F>, MacroError<MacroSpan<S::ToWrap>>>>,
 ) -> bool
 where
-    S::ToWrap: Span + Send + Sync,
+    S::ToWrap: Span + Send + Sync + 'static,
 {
     let mut stack = vec![(input, 0)];
     while let Some((slice, idx)) = stack.last_mut() {
@@ -290,12 +313,12 @@ where
 pub fn fold_macros<
     'src,
     F: Copy,
-    S: Span + Send + Sync,
+    S: Span + Send + Sync + 'static,
     E: ErrorReporter<SourcedError<MacroSource<F>, MacroError<MacroSpan<S>>>>,
 >(
     input: &mut [Token<'src, S>],
     file: F,
-    frolic_source: &'src impl AsRef<[u8]>,
+    frolic_source: &'src (impl AsRef<[u8]> + ?Sized),
     lookup: Option<&HashMap<Cow<'src, str>, mlua::Function>>,
     mut errs: E,
 ) {

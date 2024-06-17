@@ -236,3 +236,21 @@ impl<S: Span> From<Token<'_, S>> for miette::SourceSpan {
         value.span.into()
     }
 }
+
+impl<'lua, S: 'static> mlua::IntoLua<'lua> for Token<'static, S> {
+    fn into_lua(self, lua: &'lua mlua::Lua) -> mlua::Result<mlua::Value<'lua>> {
+        lua.create_any_userdata(self).map(mlua::Value::UserData)
+    }
+}
+impl<'lua, S: Clone + 'static> mlua::FromLua<'lua> for Token<'static, S> {
+    fn from_lua(value: mlua::Value<'lua>, _lua: &'lua mlua::Lua) -> mlua::Result<Self> {
+        match value {
+            mlua::Value::UserData(data) => Ok(data.borrow::<Self>()?.clone()),
+            _ => Err(mlua::Error::FromLuaConversionError {
+                from: value.type_name(),
+                to: "Token",
+                message: None,
+            }),
+        }
+    }
+}

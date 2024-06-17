@@ -40,6 +40,8 @@ pub struct Source {
 pub struct FrolicDebugLex {
     #[command(flatten)]
     pub source: Source,
+    #[arg(short, long)]
+    pub macros: bool,
 }
 impl Runnable for FrolicDebugLex {
     fn run<I: Read + Send + Sync, O: Write + Send + Sync, E: Write + Send + Sync>(
@@ -48,19 +50,19 @@ impl Runnable for FrolicDebugLex {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
-        let errs = Mutex::new(DiagnosticPrint::new(
+        let mut errs = DiagnosticPrint::new(
             stderr,
             miette::GraphicalReportHandler::new(),
-        ));
+        );
 
-        let toks: Vec<Token<PrettySpan>> = match self.source {
+        let (file, mut toks): (_, Vec<Token<PrettySpan>>) = match self.source {
             Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
-                let toks = tokenize(file.contents(), file, &errs);
-                toks
+                let toks = tokenize(file.contents(), file, &mut errs);
+                (file, toks)
             }
             Source {
                 code: None,
@@ -72,11 +74,17 @@ impl Runnable for FrolicDebugLex {
                     path.into_os_string().to_string_lossy(),
                     code,
                 );
-                let toks = tokenize(file.contents(), file, &errs);
-                toks
+                let toks = tokenize(file.contents(), file, &mut errs);
+                (file, toks)
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
+
+        if self.macros {
+            fold_macros(&mut toks, file, file.contents(), None, &mut errs);
+        }
+
+        errs.into_result()?;
 
         writeln!(stdout, "{toks:#?}")?;
 
@@ -99,18 +107,18 @@ impl Runnable for FrolicDebugParse {
         mut stdout: O,
         stderr: E,
     ) -> eyre::Result<()> {
-        let errs = Mutex::new(DiagnosticPrint::new(
+        let mut errs = DiagnosticPrint::new(
             stderr,
             miette::GraphicalReportHandler::new(),
-        ));
+        );
 
-        let (file, toks): (_, Vec<Token<PrettySpan>>) = match self.source {
+        let (file, mut toks): (_, Vec<Token<PrettySpan>>) = match self.source {
             Source {
                 code: Some(code),
                 path: None,
             } => {
                 let file = FILE_REGISTRY.add_file(PackageId::ROOT, "<command line>", code);
-                let toks = tokenize(file.contents(), file, &errs);
+                let toks = tokenize(file.contents(), file, &mut errs);
                 (file, toks)
             }
             Source {
@@ -123,20 +131,22 @@ impl Runnable for FrolicDebugParse {
                     path.into_os_string().to_string_lossy(),
                     code,
                 );
-                let toks = tokenize(file.contents(), file, &errs);
+                let toks = tokenize(file.contents(), file, &mut errs);
                 (file, toks)
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
 
+        fold_macros(&mut toks, file, file.contents(), None, &mut errs);
+
         if self.expr {
-            let ast = parse_expr(&toks, file, &errs, DebugAsts::new());
+            let ast = parse_expr(&toks, file, &mut errs, DebugAsts::new());
             write!(stdout, "{ast:#?}")?;
         } else {
-            let ast = parse_tl(&toks, file, &errs, DebugAsts::new());
+            let ast = parse_tl(&toks, file, &mut errs, DebugAsts::new());
             write!(stdout, "{ast:#?}")?;
         }
-        errs.into_inner().unwrap().into_result()?;
+        errs.into_result()?;
 
         Ok(())
     }
@@ -161,7 +171,7 @@ impl Runnable for FrolicDebugHir {
             miette::GraphicalReportHandler::new(),
         ));
 
-        let (file, toks): (_, Vec<Token<PrettySpan>>) = match self.source {
+        let (file, mut toks): (_, Vec<Token<PrettySpan>>) = match self.source {
             Source {
                 code: Some(code),
                 path: None,
@@ -185,6 +195,8 @@ impl Runnable for FrolicDebugHir {
             }
             _ => panic!("exactly one of `code` and `path` should be set!"),
         };
+
+        fold_macros(&mut toks, file, file.contents(), None, &errs);
 
         let bump = BumpAlloc::new();
         let ast = parse_tl(&toks, file, &errs, HirAsts::new());
